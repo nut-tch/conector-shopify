@@ -6,4 +6,6 @@ urlpatterns = [
     path("install/", views.shopify_install),
     path("callback/", views.shopify_callback),
     path("orders/", views.orders_view),
+    path("sync-orders/", views.sync_orders),
+    path("sync-products/", views.sync_products),
 ]
