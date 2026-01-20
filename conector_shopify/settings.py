@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'shopify_app',
+    'erp_connector',
 ]
 
 MIDDLEWARE = [

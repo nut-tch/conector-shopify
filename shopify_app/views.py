@@ -238,7 +238,7 @@ def webhook_orders_create(request):
     if not hmac.compare_digest(calculated_hmac, shopify_hmac):
         return HttpResponse("HMAC inválido", status=401)
 
-    # Leer datos del pedido
+    
     data = json.loads(request.body)
     
     shop = Shop.objects.first()
