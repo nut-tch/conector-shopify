@@ -1,5 +1,10 @@
 import os
 import requests
+import json
+import hmac
+import hashlib
+import base64
+from django.conf import settings
 from urllib.parse import urlencode
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect
@@ -207,3 +212,89 @@ def sync_products(request):
         "message": "Productos sincronizados",
         "count": saved
     })
+
+    import json
+
+@csrf_exempt
+@csrf_exempt
+def webhook_orders_create(request):
+    if request.method != "POST":
+        return HttpResponse("Método no permitido", status=405)
+
+    # Verificar HMAC
+    shopify_hmac = request.headers.get("X-Shopify-Hmac-Sha256")
+    
+    if not shopify_hmac:
+        return HttpResponse("Falta HMAC", status=400)
+
+    digest = hmac.new(
+        settings.SHOPIFY_API_SECRET.encode("utf-8"),
+        request.body,
+        hashlib.sha256
+    ).digest()
+    
+    calculated_hmac = base64.b64encode(digest).decode()
+
+    if not hmac.compare_digest(calculated_hmac, shopify_hmac):
+        return HttpResponse("HMAC inválido", status=401)
+
+    # Leer datos del pedido
+    data = json.loads(request.body)
+    
+    shop = Shop.objects.first()
+    
+    if not shop:
+        return HttpResponse("Tienda no encontrada", status=404)
+
+    # Guardar pedido
+    Order.objects.update_or_create(
+        shopify_id=data["id"],
+        defaults={
+            "shop": shop,
+            "name": data["name"],
+            "email": data.get("email", ""),
+            "total_price": data["total_price"],
+            "financial_status": data["financial_status"],
+            "fulfillment_status": data.get("fulfillment_status", "") or "",
+            "created_at": data["created_at"]
+        }
+    )
+
+    print("✅ PEDIDO RECIBIDO:", data["name"])
+
+    return HttpResponse("OK", status=200)
+
+def register_webhook(request):
+    shop = Shop.objects.first()
+    if not shop:
+        return JsonResponse({"error": "Tienda no encontrada"}, status=404)
+
+    webhook_url = "https://transsegmental-carmelo-uropodal.ngrok-free.dev/shopify/webhook/orders/create/"
+
+    payload = {
+        "webhook": {
+            "topic": "orders/create",
+            "address": webhook_url,
+            "format": "json"
+        }
+    }
+
+    url = f"https://{shop.shop}/admin/api/2024-01/webhooks.json"
+    headers = {
+        "X-Shopify-Access-Token": shop.access_token,
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(url, json=payload, headers=headers)
+
+    if response.status_code not in [200, 201]:
+        return JsonResponse({
+            "error": "Error al registrar el webhook",
+            "status": response.status_code,
+            "body": response.text
+        }, status=500)
+
+    return JsonResponse({
+        "message": "Webhook registrado correctamente",
+        "response": response.json()
+    })   

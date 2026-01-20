@@ -29,7 +29,11 @@ SECRET_KEY = 'django-insecure-tuubg*6apjs5azhww+t=70%g9+5(z5kdjz911n&p6w)se!2^1=
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    "127.0.0.1",
+    "localhost",
+    "transsegmental-carmelo-uropodal.ngrok-free.dev",
+]
 
 
 # Application definition
@@ -120,3 +124,6 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+
+SHOPIFY_API_SECRET = os.getenv("SHOPIFY_API_SECRET")
+
