@@ -9,7 +9,7 @@ from urllib.parse import urlencode
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.views.decorators.csrf import csrf_exempt
-from .models import Shop, Order, Product
+from .models import Shop, Order, Product, Customer
 
 
 SHOPIFY_API_KEY = os.getenv("SHOPIFY_API_KEY")
@@ -297,4 +297,57 @@ def register_webhook(request):
     return JsonResponse({
         "message": "Webhook registrado correctamente",
         "response": response.json()
-    })   
+    })
+
+def sync_customers(request):
+    shop = Shop.objects.first()
+
+    if not shop:
+        return JsonResponse({"error": "Tienda no encontrada"}, status=404)
+
+    headers = {
+        "X-Shopify-Access-Token": shop.access_token
+    }
+
+    all_customers = []
+    url = f"https://{shop.shop}/admin/api/2024-01/customers.json?limit=250"
+
+    while url:
+        response = requests.get(url, headers=headers)
+
+        if response.status_code != 200:
+            return JsonResponse({
+                "error": "Error de Shopify",
+                "status": response.status_code
+            }, status=500)
+
+        data = response.json()
+        all_customers.extend(data["customers"])
+
+        # Buscar siguiente página
+        link_header = response.headers.get("Link", "")
+        url = None
+        if 'rel="next"' in link_header:
+            for part in link_header.split(","):
+                if 'rel="next"' in part:
+                    url = part.split(";")[0].strip().strip("<>")
+
+    saved = 0
+    for customer in all_customers:
+        Customer.objects.update_or_create(
+            shopify_id=customer["id"],
+            defaults={
+                "shop": shop,
+                "email": customer.get("email", "") or "",
+                "first_name": customer.get("first_name", "") or "",
+                "last_name": customer.get("last_name", "") or "",
+                "phone": customer.get("phone", "") or "",
+                "created_at": customer["created_at"]
+            }
+        )
+        saved += 1
+
+    return JsonResponse({
+        "message": "Clientes sincronizados",
+        "count": saved
+    }) 

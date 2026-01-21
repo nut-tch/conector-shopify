@@ -40,6 +40,19 @@ class Product(models.Model):
         return self.title
 
 
+class Customer(models.Model):
+    shop = models.ForeignKey(Shop, on_delete=models.CASCADE)
+    shopify_id = models.BigIntegerField(unique=True)
+    email = models.CharField(max_length=255, blank=True)
+    first_name = models.CharField(max_length=255, blank=True)
+    last_name = models.CharField(max_length=255, blank=True)
+    phone = models.CharField(max_length=50, blank=True)
+    created_at = models.DateTimeField()
+
+    def __str__(self):
+        return f"{self.first_name} {self.last_name} ({self.email})"
+
+
 
 
 
