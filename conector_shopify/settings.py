@@ -24,17 +24,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-tuubg*6apjs5azhww+t=70%g9+5(z5kdjz911n&p6w)se!2^1='
+SECRET_KEY = os.getenv("SECRET_KEY", "clave-temporal-cambiar-en-produccion")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
 
-ALLOWED_HOSTS = [
-    "127.0.0.1",
-    "localhost",
-    "transsegmental-carmelo-uropodal.ngrok-free.dev",
-]
+DEBUG = os.getenv("DEBUG", "False") == "True"
 
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
 
 # Application definition
 
@@ -114,17 +110,27 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Europe/Madrid'
 
 USE_I18N = True
 
 USE_TZ = True
+
+USE_L10N = True
+
+DATETIME_FORMAT = 'd/m/Y H:i'
+
+DATE_FORMAT = 'd/m/Y'
+
+TIME_FORMAT = 'H:i'
 
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
 SHOPIFY_API_SECRET = os.getenv("SHOPIFY_API_SECRET")
 
