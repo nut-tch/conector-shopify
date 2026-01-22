@@ -11,4 +11,5 @@ urlpatterns = [
     path("sync-customers/", views.sync_customers),
     path("webhook/orders/create/", views.webhook_orders_create),
     path("register-webhook/", views.register_webhook),
+    path("dashboard/", views.dashboard),
 ]

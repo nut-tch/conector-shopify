@@ -10,6 +10,10 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.views.decorators.csrf import csrf_exempt
 from .models import Shop, Order, Product, Customer
+from django.db.models import Sum, Count
+from django.db.models.functions import TruncDate
+from datetime import datetime, timedelta
+from django.shortcuts import render
 
 
 SHOPIFY_API_KEY = os.getenv("SHOPIFY_API_KEY")
@@ -350,4 +354,63 @@ def sync_customers(request):
     return JsonResponse({
         "message": "Clientes sincronizados",
         "count": saved
-    }) 
+    })
+
+def dashboard(request):
+    today = datetime.now().date()
+    last_7_days = today - timedelta(days=7)
+    last_30_days = today - timedelta(days=30)
+
+    # Estadísticas generales
+    total_orders = Order.objects.count()
+    total_customers = Customer.objects.count()
+    total_products = Product.objects.count()
+
+    # Pedidos hoy
+    orders_today = Order.objects.filter(created_at__date=today).count()
+    revenue_today = Order.objects.filter(created_at__date=today).aggregate(
+        total=Sum('total_price'))['total'] or 0
+
+    # Pedidos últimos 7 días
+    orders_7_days = Order.objects.filter(created_at__date__gte=last_7_days).count()
+    revenue_7_days = Order.objects.filter(created_at__date__gte=last_7_days).aggregate(
+        total=Sum('total_price'))['total'] or 0
+
+    # Pedidos últimos 30 días
+    orders_30_days = Order.objects.filter(created_at__date__gte=last_30_days).count()
+    revenue_30_days = Order.objects.filter(created_at__date__gte=last_30_days).aggregate(
+        total=Sum('total_price'))['total'] or 0
+
+    # Pedidos por estado
+    orders_by_status = Order.objects.values('financial_status').annotate(
+        count=Count('id')).order_by('-count')
+
+    # Últimos 5 pedidos
+    recent_orders = Order.objects.order_by('-created_at')[:5]
+
+    # Pedidos por día (últimos 7 días)
+    orders_per_day = Order.objects.filter(
+        created_at__date__gte=last_7_days
+    ).annotate(
+        date=TruncDate('created_at')
+    ).values('date').annotate(
+        count=Count('id'),
+        revenue=Sum('total_price')
+    ).order_by('date')
+
+    context = {
+        'total_orders': total_orders,
+        'total_customers': total_customers,
+        'total_products': total_products,
+        'orders_today': orders_today,
+        'revenue_today': revenue_today,
+        'orders_7_days': orders_7_days,
+        'revenue_7_days': revenue_7_days,
+        'orders_30_days': orders_30_days,
+        'revenue_30_days': revenue_30_days,
+        'orders_by_status': orders_by_status,
+        'recent_orders': recent_orders,
+        'orders_per_day': list(orders_per_day),
+    }
+
+    return render(request, 'dashboard.html', context)
