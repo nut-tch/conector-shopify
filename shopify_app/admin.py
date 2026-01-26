@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.shortcuts import redirect
 from django.urls import path
-from .models import Shop, Order, OrderLine, Product, Customer
+from .models import Shop, Order, OrderLine, Product, ProductVariant, Customer, ProductMapping
 from .views import sync_orders, sync_products, sync_customers
 
 admin.site.site_header = "Nutricione"
@@ -130,3 +130,15 @@ class CustomerAdmin(admin.ModelAdmin):
         sync_customers(request)
         self.message_user(request, "Clientes sincronizados correctamente")
         return redirect("..")
+
+@admin.register(ProductMapping)
+class ProductMappingAdmin(admin.ModelAdmin):
+    list_display = ("variant", "verial_id", "verial_barcode", "last_sync")
+    search_fields = ("variant__product__title", "variant__sku", "verial_id", "verial_barcode")
+    autocomplete_fields = ["variant"]
+
+@admin.register(ProductVariant)
+class ProductVariantAdmin(admin.ModelAdmin):
+    list_display = ("product", "title", "sku", "barcode", "price", "inventory_quantity")
+    search_fields = ("product__title", "title", "sku", "barcode")
+    list_filter = ("product__vendor",)

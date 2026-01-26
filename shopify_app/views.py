@@ -5,7 +5,7 @@ import hashlib
 import base64
 import requests
 from datetime import datetime, timedelta
-
+from shopify_app.product_mapping import auto_map_products_by_barcode
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
@@ -14,7 +14,7 @@ from django.db.models import Sum, Count
 from django.db.models.functions import TruncDate
 from urllib.parse import urlencode
 
-from .models import Shop, Order, OrderLine, Product, Customer
+from .models import Shop, Order, OrderLine, Product, ProductVariant, Customer
 
 
 SHOPIFY_API_KEY = os.getenv("SHOPIFY_API_KEY")
@@ -208,24 +208,42 @@ def sync_products(request):
                 if 'rel="next"' in part:
                     url = part.split(";")[0].strip().strip("<>")
 
-    saved = 0
-    for product in all_products:
-        Product.objects.update_or_create(
-            shopify_id=product["id"],
+    saved_products = 0
+    saved_variants = 0
+    
+    for product_data in all_products:
+        product, created = Product.objects.update_or_create(
+            shopify_id=product_data["id"],
             defaults={
                 "shop": shop,
-                "title": product["title"],
-                "vendor": product.get("vendor", ""),
-                "product_type": product.get("product_type", ""),
-                "status": product["status"],
-                "created_at": product["created_at"]
+                "title": product_data["title"],
+                "vendor": product_data.get("vendor", ""),
+                "product_type": product_data.get("product_type", ""),
+                "status": product_data["status"],
+                "created_at": product_data["created_at"]
             }
         )
-        saved += 1
+        saved_products += 1
+        
+        # Guardar variantes con barcode
+        for variant_data in product_data.get("variants", []):
+            ProductVariant.objects.update_or_create(
+                shopify_id=variant_data["id"],
+                defaults={
+                    "product": product,
+                    "title": variant_data.get("title", "Default"),
+                    "sku": variant_data.get("sku", "") or "",
+                    "barcode": variant_data.get("barcode", "") or "",
+                    "price": variant_data.get("price", 0),
+                    "inventory_quantity": variant_data.get("inventory_quantity", 0),
+                }
+            )
+            saved_variants += 1
 
     return JsonResponse({
         "message": "Productos sincronizados",
-        "count": saved
+        "products": saved_products,
+        "variants": saved_variants
     })
 
 
@@ -427,3 +445,15 @@ def dashboard(request):
     }
 
     return render(request, 'dashboard.html', context)
+
+def auto_map_products_view(request):   
+    from .product_mapping import auto_map_products_by_barcode, get_mapping_stats
+    
+    success, result = auto_map_products_by_barcode()
+    stats = get_mapping_stats()
+
+    return JsonResponse({
+        "success": success,
+        "result": result,
+        "stats": stats
+    })

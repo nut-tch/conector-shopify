@@ -70,6 +70,34 @@ class Product(models.Model):
     def __str__(self):
         return self.title
 
+class ProductVariant(models.Model):
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='variants')
+    shopify_id = models.BigIntegerField(unique=True)
+    title = models.CharField(max_length=255, verbose_name="Título")
+    sku = models.CharField(max_length=100, blank=True, verbose_name="SKU")
+    barcode = models.CharField(max_length=100, blank=True, verbose_name="Código de barras")
+    price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Precio")
+    inventory_quantity = models.IntegerField(default=0, verbose_name="Stock")
+    
+    class Meta:
+        verbose_name = "Variante"
+        verbose_name_plural = "Variantes"
+    
+    def __str__(self):
+        return f"{self.product.title} - {self.title}"
+    
+class ProductMapping(models.Model):
+    variant = models.OneToOneField(ProductVariant, on_delete=models.CASCADE, related_name='verial_mapping')
+    verial_id = models.BigIntegerField(verbose_name="ID Verial")
+    verial_barcode = models.CharField(max_length=100, blank=True, verbose_name="Código barras Verial")
+    last_sync = models.DateTimeField(auto_now=True, verbose_name="Última sincronización")
+    
+    class Meta:
+        verbose_name = "Mapeo de producto"
+        verbose_name_plural = "Mapeos de productos"
+    
+    def __str__(self):
+        return f"{self.variant} → Verial ID: {self.verial_id}"
 
 class Customer(models.Model):
     shop = models.ForeignKey(Shop, on_delete=models.CASCADE)
