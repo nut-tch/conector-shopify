@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.shortcuts import redirect
 from django.urls import path
-from .models import Shop, Order, OrderLine, Product, ProductVariant, Customer, ProductMapping
+from .models import Shop, Order, OrderLine, Product, ProductVariant, Customer, ProductMapping, CustomerMapping
 from .views import sync_orders, sync_products, sync_customers
 
 admin.site.site_header = "Nutricione"
@@ -142,3 +142,9 @@ class ProductVariantAdmin(admin.ModelAdmin):
     list_display = ("product", "title", "sku", "barcode", "price", "inventory_quantity")
     search_fields = ("product__title", "title", "sku", "barcode")
     list_filter = ("product__vendor",)
+
+@admin.register(CustomerMapping)
+class CustomerMappingAdmin(admin.ModelAdmin):
+    list_display = ("customer", "verial_id", "verial_nif", "last_sync")
+    search_fields = ("customer__email", "customer__first_name", "verial_id", "verial_nif")
+    autocomplete_fields = ["customer"]

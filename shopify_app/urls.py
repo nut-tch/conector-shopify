@@ -12,6 +12,5 @@ urlpatterns = [
     path("webhook/orders/create/", views.webhook_orders_create),
     path("register-webhook/", views.register_webhook),
     path("dashboard/", views.dashboard),
-    path("auto-map-products/", views.auto_map_products_view),
     path('map-products/', views.auto_map_products_view, name='auto_map_products'),
 ]
