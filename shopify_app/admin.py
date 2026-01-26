@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.shortcuts import redirect
 from django.urls import path
-from .models import Shop, Order, Product, Customer
+from .models import Shop, Order, OrderLine, Product, Customer
 from .views import sync_orders, sync_products, sync_customers
 
 admin.site.site_header = "Nutricione"
@@ -9,6 +9,18 @@ admin.site.site_title = "Nutricione"
 admin.site.index_title = "Panel de administración"
 
 admin.site.register(Shop)
+
+
+class OrderLineInline(admin.TabularInline):
+    model = OrderLine
+    extra = 0
+    readonly_fields = ("shopify_id", "product_title", "variant_title", "sku", "quantity", "price", "line_total")
+    can_delete = False
+
+    def line_total(self, obj):
+        return f"{obj.total} €"
+    line_total.short_description = "Total"
+
 
 class FinancialStatusFilter(admin.SimpleListFilter):
     title = 'Estado de pago'
@@ -46,6 +58,7 @@ class FulfillmentStatusFilter(admin.SimpleListFilter):
             return queryset.filter(fulfillment_status=self.value())
         return queryset
 
+
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     list_display = ("name", "email", "total_price", "financial_status", "fulfillment_status", "created_at")
@@ -54,6 +67,7 @@ class OrderAdmin(admin.ModelAdmin):
     ordering = ("-created_at",)
     date_hierarchy = "created_at"
     change_list_template = "admin/order_change_list.html"
+    inlines = [OrderLineInline]
 
     def get_urls(self):
         urls = super().get_urls()

@@ -1,19 +1,20 @@
 import os
-import requests
 import json
 import hmac
 import hashlib
 import base64
+import requests
+from datetime import datetime, timedelta
+
 from django.conf import settings
-from urllib.parse import urlencode
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import redirect
+from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
-from .models import Shop, Order, Product, Customer
 from django.db.models import Sum, Count
 from django.db.models.functions import TruncDate
-from datetime import datetime, timedelta
-from django.shortcuts import render
+from urllib.parse import urlencode
+
+from .models import Shop, Order, OrderLine, Product, Customer
 
 
 SHOPIFY_API_KEY = os.getenv("SHOPIFY_API_KEY")
@@ -29,7 +30,7 @@ def health_check(request):
 def shopify_install(request):
     shop = request.GET.get("shop")
     if not shop:
-        return HttpResponse("Missing shop parameter", status=400)
+        return HttpResponse("Falta parámetro shop", status=400)
 
     params = {
         "client_id": SHOPIFY_API_KEY,
@@ -48,7 +49,7 @@ def shopify_callback(request):
     shop = request.GET.get("shop")
 
     if not code or not shop:
-        return HttpResponse("Missing parameters", status=400)
+        return HttpResponse("Faltan parámetros", status=400)
 
     token_url = f"https://{shop}/admin/oauth/access_token"
     payload = {
@@ -63,7 +64,7 @@ def shopify_callback(request):
         data = response.json()
     except Exception:
         return JsonResponse(
-            {"error": "Invalid response from Shopify", "raw": response.text},
+            {"error": "Respuesta inválida de Shopify", "raw": response.text},
             status=400,
         )
 
@@ -83,27 +84,25 @@ def shopify_callback(request):
         "saved": True,
     })
 
+
 def orders_view(request):
     shop = Shop.objects.first()
 
     if not shop:
-        return JsonResponse({"error": "No shop found"}, status=404)
+        return JsonResponse({"error": "Tienda no encontrada"}, status=404)
 
     url = f"https://{shop.shop}/admin/api/2024-01/orders.json"
-    headers = {
-        "X-Shopify-Access-Token": shop.access_token
-    }
+    headers = {"X-Shopify-Access-Token": shop.access_token}
 
     response = requests.get(url, headers=headers)
 
     if response.status_code != 200:
         return JsonResponse({
-            "error": "Shopify error",
+            "error": "Error de Shopify",
             "status": response.status_code
         }, status=500)
 
     data = response.json()
-
 
     orders_clean = []
     for order in data["orders"]:
@@ -122,41 +121,55 @@ def orders_view(request):
         "orders": orders_clean
     })
 
+
 def sync_orders(request):
     shop = Shop.objects.first()
 
     if not shop:
-        return JsonResponse({"error": "No shop found"}, status=404)
+        return JsonResponse({"error": "Tienda no encontrada"}, status=404)
 
     url = f"https://{shop.shop}/admin/api/2024-01/orders.json"
-    headers = {
-        "X-Shopify-Access-Token": shop.access_token
-    }
+    headers = {"X-Shopify-Access-Token": shop.access_token}
 
     response = requests.get(url, headers=headers)
 
     if response.status_code != 200:
         return JsonResponse({
-            "error": "Shopify error",
+            "error": "Error de Shopify",
             "status": response.status_code
         }, status=500)
 
     data = response.json()
 
     saved = 0
-    for order in data["orders"]:
-        Order.objects.update_or_create(
-            shopify_id=order["id"],
+    for order_data in data["orders"]:
+        order, created = Order.objects.update_or_create(
+            shopify_id=order_data["id"],
             defaults={
                 "shop": shop,
-                "name": order["name"],
-                "email": order.get("email", ""),
-                "total_price": order["total_price"],
-                "financial_status": order["financial_status"],
-                "fulfillment_status": order.get("fulfillment_status", "") or "",
-                "created_at": order["created_at"]
+                "name": order_data["name"],
+                "email": order_data.get("email", ""),
+                "total_price": order_data["total_price"],
+                "financial_status": order_data["financial_status"],
+                "fulfillment_status": order_data.get("fulfillment_status", "") or "",
+                "created_at": order_data["created_at"]
             }
         )
+
+        # Guardar líneas de pedido
+        for item in order_data.get("line_items", []):
+            OrderLine.objects.update_or_create(
+                order=order,
+                shopify_id=item["id"],
+                defaults={
+                    "product_title": item.get("title", ""),
+                    "variant_title": item.get("variant_title", "") or "",
+                    "sku": item.get("sku", "") or "",
+                    "quantity": item.get("quantity", 1),
+                    "price": item.get("price", 0)
+                }
+            )
+
         saved += 1
 
     return JsonResponse({
@@ -164,15 +177,14 @@ def sync_orders(request):
         "count": saved
     })
 
+
 def sync_products(request):
     shop = Shop.objects.first()
 
     if not shop:
-        return JsonResponse({"error": "No shop found"}, status=404)
+        return JsonResponse({"error": "Tienda no encontrada"}, status=404)
 
-    headers = {
-        "X-Shopify-Access-Token": shop.access_token
-    }
+    headers = {"X-Shopify-Access-Token": shop.access_token}
 
     all_products = []
     url = f"https://{shop.shop}/admin/api/2024-01/products.json?limit=250"
@@ -182,14 +194,13 @@ def sync_products(request):
 
         if response.status_code != 200:
             return JsonResponse({
-                "error": "Shopify error",
+                "error": "Error de Shopify",
                 "status": response.status_code
             }, status=500)
 
         data = response.json()
         all_products.extend(data["products"])
 
-        # Buscar siguiente página en headers
         link_header = response.headers.get("Link", "")
         url = None
         if 'rel="next"' in link_header:
@@ -217,17 +228,65 @@ def sync_products(request):
         "count": saved
     })
 
-    import json
 
-@csrf_exempt
+def sync_customers(request):
+    shop = Shop.objects.first()
+
+    if not shop:
+        return JsonResponse({"error": "Tienda no encontrada"}, status=404)
+
+    headers = {"X-Shopify-Access-Token": shop.access_token}
+
+    all_customers = []
+    url = f"https://{shop.shop}/admin/api/2024-01/customers.json?limit=250"
+
+    while url:
+        response = requests.get(url, headers=headers)
+
+        if response.status_code != 200:
+            return JsonResponse({
+                "error": "Error de Shopify",
+                "status": response.status_code
+            }, status=500)
+
+        data = response.json()
+        all_customers.extend(data["customers"])
+
+        link_header = response.headers.get("Link", "")
+        url = None
+        if 'rel="next"' in link_header:
+            for part in link_header.split(","):
+                if 'rel="next"' in part:
+                    url = part.split(";")[0].strip().strip("<>")
+
+    saved = 0
+    for customer in all_customers:
+        Customer.objects.update_or_create(
+            shopify_id=customer["id"],
+            defaults={
+                "shop": shop,
+                "email": customer.get("email", "") or "",
+                "first_name": customer.get("first_name", "") or "",
+                "last_name": customer.get("last_name", "") or "",
+                "phone": customer.get("phone", "") or "",
+                "created_at": customer["created_at"]
+            }
+        )
+        saved += 1
+
+    return JsonResponse({
+        "message": "Clientes sincronizados",
+        "count": saved
+    })
+
+
 @csrf_exempt
 def webhook_orders_create(request):
     if request.method != "POST":
         return HttpResponse("Método no permitido", status=405)
 
-    # Verificar HMAC
     shopify_hmac = request.headers.get("X-Shopify-Hmac-Sha256")
-    
+
     if not shopify_hmac:
         return HttpResponse("Falta HMAC", status=400)
 
@@ -236,22 +295,20 @@ def webhook_orders_create(request):
         request.body,
         hashlib.sha256
     ).digest()
-    
+
     calculated_hmac = base64.b64encode(digest).decode()
 
     if not hmac.compare_digest(calculated_hmac, shopify_hmac):
         return HttpResponse("HMAC inválido", status=401)
 
-    
     data = json.loads(request.body)
-    
+
     shop = Shop.objects.first()
-    
+
     if not shop:
         return HttpResponse("Tienda no encontrada", status=404)
 
-    # Guardar pedido
-    Order.objects.update_or_create(
+    order, created = Order.objects.update_or_create(
         shopify_id=data["id"],
         defaults={
             "shop": shop,
@@ -264,16 +321,31 @@ def webhook_orders_create(request):
         }
     )
 
+    # Guardar líneas de pedido
+    for item in data.get("line_items", []):
+        OrderLine.objects.update_or_create(
+            order=order,
+            shopify_id=item["id"],
+            defaults={
+                "product_title": item.get("title", ""),
+                "variant_title": item.get("variant_title", "") or "",
+                "sku": item.get("sku", "") or "",
+                "quantity": item.get("quantity", 1),
+                "price": item.get("price", 0)
+            }
+        )
+
     print("✅ PEDIDO RECIBIDO:", data["name"])
 
     return HttpResponse("OK", status=200)
+
 
 def register_webhook(request):
     shop = Shop.objects.first()
     if not shop:
         return JsonResponse({"error": "Tienda no encontrada"}, status=404)
 
-    webhook_url = "https://transsegmental-carmelo-uropodal.ngrok-free.dev/shopify/webhook/orders/create/"
+    webhook_url = os.getenv("WEBHOOK_URL", "https://tu-dominio.com/shopify/webhook/orders/create/")
 
     payload = {
         "webhook": {
@@ -303,92 +375,33 @@ def register_webhook(request):
         "response": response.json()
     })
 
-def sync_customers(request):
-    shop = Shop.objects.first()
-
-    if not shop:
-        return JsonResponse({"error": "Tienda no encontrada"}, status=404)
-
-    headers = {
-        "X-Shopify-Access-Token": shop.access_token
-    }
-
-    all_customers = []
-    url = f"https://{shop.shop}/admin/api/2024-01/customers.json?limit=250"
-
-    while url:
-        response = requests.get(url, headers=headers)
-
-        if response.status_code != 200:
-            return JsonResponse({
-                "error": "Error de Shopify",
-                "status": response.status_code
-            }, status=500)
-
-        data = response.json()
-        all_customers.extend(data["customers"])
-
-        # Buscar siguiente página
-        link_header = response.headers.get("Link", "")
-        url = None
-        if 'rel="next"' in link_header:
-            for part in link_header.split(","):
-                if 'rel="next"' in part:
-                    url = part.split(";")[0].strip().strip("<>")
-
-    saved = 0
-    for customer in all_customers:
-        Customer.objects.update_or_create(
-            shopify_id=customer["id"],
-            defaults={
-                "shop": shop,
-                "email": customer.get("email", "") or "",
-                "first_name": customer.get("first_name", "") or "",
-                "last_name": customer.get("last_name", "") or "",
-                "phone": customer.get("phone", "") or "",
-                "created_at": customer["created_at"]
-            }
-        )
-        saved += 1
-
-    return JsonResponse({
-        "message": "Clientes sincronizados",
-        "count": saved
-    })
 
 def dashboard(request):
     today = datetime.now().date()
     last_7_days = today - timedelta(days=7)
     last_30_days = today - timedelta(days=30)
 
-    # Estadísticas generales
     total_orders = Order.objects.count()
     total_customers = Customer.objects.count()
     total_products = Product.objects.count()
 
-    # Pedidos hoy
     orders_today = Order.objects.filter(created_at__date=today).count()
     revenue_today = Order.objects.filter(created_at__date=today).aggregate(
         total=Sum('total_price'))['total'] or 0
 
-    # Pedidos últimos 7 días
     orders_7_days = Order.objects.filter(created_at__date__gte=last_7_days).count()
     revenue_7_days = Order.objects.filter(created_at__date__gte=last_7_days).aggregate(
         total=Sum('total_price'))['total'] or 0
 
-    # Pedidos últimos 30 días
     orders_30_days = Order.objects.filter(created_at__date__gte=last_30_days).count()
     revenue_30_days = Order.objects.filter(created_at__date__gte=last_30_days).aggregate(
         total=Sum('total_price'))['total'] or 0
 
-    # Pedidos por estado
     orders_by_status = Order.objects.values('financial_status').annotate(
         count=Count('id')).order_by('-count')
 
-    # Últimos 5 pedidos
     recent_orders = Order.objects.order_by('-created_at')[:5]
 
-    # Pedidos por día (últimos 7 días)
     orders_per_day = Order.objects.filter(
         created_at__date__gte=last_7_days
     ).annotate(

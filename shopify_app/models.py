@@ -31,6 +31,29 @@ class Order(models.Model):
         return self.name
 
 
+class OrderLine(models.Model):
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='lines')
+    shopify_id = models.BigIntegerField()
+    product_title = models.CharField(max_length=255, verbose_name="Producto")
+    variant_title = models.CharField(max_length=255, blank=True, verbose_name="Variante")
+    sku = models.CharField(max_length=100, blank=True, verbose_name="SKU")
+    quantity = models.IntegerField(verbose_name="Cantidad")
+    price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Precio")
+
+    class Meta:
+        verbose_name = "Línea de pedido"
+        verbose_name_plural = "Líneas de pedido"
+
+    def __str__(self):
+        return f"{self.quantity}x {self.product_title}"
+
+    @property
+    def total(self):
+        if self.quantity and self.price:
+            return self.quantity * self.price
+        return 0
+
+
 class Product(models.Model):
     shop = models.ForeignKey(Shop, on_delete=models.CASCADE)
     shopify_id = models.BigIntegerField(unique=True)
