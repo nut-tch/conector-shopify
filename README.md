@@ -1,19 +1,22 @@
-# 🛒 Conector Shopify - Django
+# 🛒 Conector Shopify-Verial - Django
 
-> Sistema de integración entre Shopify y Django para sincronización de pedidos, productos y clientes.
+> Middleware de integración entre Shopify y ERP Verial para sincronización de pedidos, productos y clientes.
 
 ---
 
 ## 📋 Descripción
 
-Este proyecto es un conector backend desarrollado en **Django** que permite:
+Este proyecto es un middleware desarrollado en **Django** que conecta la tienda Shopify con el ERP Verial:
 
 - ✅ Sincronización de **pedidos** desde Shopify
-- ✅ Sincronización de **productos** desde Shopify
+- ✅ Sincronización de **productos y variantes** desde Shopify
 - ✅ Sincronización de **clientes** desde Shopify
 - ✅ Recepción de **webhooks** en tiempo real
+- ✅ **Mapeo automático** de productos por código de barras
+- ✅ **Envío de pedidos** a Verial con cliente embebido
+- ✅ **Mapeo de clientes** Shopify ↔ Verial
 - ✅ Panel de administración con botones de sincronización
-- ✅ Preparado para conexión con **ERP Verial**
+- ✅ Dashboard con estadísticas
 
 ---
 
@@ -28,18 +31,23 @@ Este proyecto es un conector backend desarrollado en **Django** que permite:
          ▼
 ┌─────────────────┐
 │     Django      │
-│   (Conector)    │
+│  (Middleware)   │
 ├─────────────────┤
 │ - shopify_app   │
 │ - erp_connector │
 └────────┬────────┘
-         │ (Pendiente)
+         │ REST API
          ▼
 ┌─────────────────┐
 │   ERP Verial    │
 │  (Webservices)  │
 └─────────────────┘
 ```
+
+**Flujo de datos:**
+- **Verial es el MAESTRO** → Los productos y stock se gestionan en Verial
+- **Shopify es el escaparate** → Recibe pedidos de clientes
+- **El middleware sincroniza** → Pedidos de Shopify → Verial
 
 ---
 
@@ -62,15 +70,13 @@ cd conector-shopify
 python -m venv venv
 
 # 3. Activar entorno virtual
-# Windows (Git Bash)
-source venv/Scripts/activate
-# Windows (CMD)
-venv\Scripts\activate
 # Linux/Mac
 source venv/bin/activate
+# Windows
+venv\Scripts\activate
 
 # 4. Instalar dependencias
-pip install django requests python-dotenv
+pip install -r requirements.txt
 
 # 5. Configurar variables de entorno
 cp .env.example .env
@@ -99,45 +105,39 @@ SHOPIFY_API_SECRET=tu_client_secret
 SHOPIFY_SCOPES=read_products,read_orders,read_customers
 SHOPIFY_REDIRECT_URI=http://127.0.0.1:8000/shopify/callback/
 
-# ERP (pendiente)
-ERP_URL=
-ERP_USER=
-ERP_PASSWORD=
+# Verial ERP
+VERIAL_SERVER=ip:puerto
+VERIAL_SESSION=tu_sesion
+VERIAL_ONLINE_SESSION=tu_sesion_online
+
+# Webhook
+WEBHOOK_URL=https://tu-dominio.com/shopify/webhook/orders/create/
 ```
-
-### Configuración en Shopify
-
-1. Crear **Custom App** en Shopify Admin → Settings → Apps → Develop apps
-2. Configurar **scopes**:
-   - `read_products`
-   - `read_orders`
-   - `write_orders`
-   - `read_customers`
-3. Configurar **Redirect URL**: `http://127.0.0.1:8000/shopify/callback/`
-4. Instalar la app y guardar el **Access Token**
 
 ---
 
 ## 📁 Estructura del proyecto
 
 ```
-conector_shopify/
+conector-shopify/
 ├── conector_shopify/          # Configuración Django
 │   ├── settings.py
 │   ├── urls.py
 │   └── wsgi.py
-├── shopify_app/               # App principal Shopify
-│   ├── models.py              # Shop, Order, Product, Customer
-│   ├── views.py               # Vistas y webhooks
-│   ├── urls.py                # Rutas API
+├── shopify_app/               # App principal
+│   ├── models.py              # Shop, Order, OrderLine, Product, ProductVariant, Customer, ProductMapping, CustomerMapping
+│   ├── views.py               # Sincronización y webhooks
 │   ├── admin.py               # Panel administración
-│   └── templates/admin/       # Templates botones sync
-├── erp_connector/             # Conector ERP (preparado)
-│   ├── models.py              # ERPSyncLog
-│   ├── views.py               # Funciones ERP
+│   ├── urls.py
+│   ├── order_to_verial.py     # Envío pedidos a Verial
+│   ├── product_mapping.py     # Mapeo productos por código barras
+│   ├── customer_mapping.py    # Mapeo clientes
+│   └── templates/
+├── erp_connector/             # Conector Verial
+│   ├── verial_client.py       # Cliente API Verial
+│   ├── views.py
 │   └── urls.py
-├── .env                       # Variables de entorno
-├── .gitignore
+├── .env
 ├── manage.py
 └── README.md
 ```
@@ -153,17 +153,22 @@ conector_shopify/
 | GET | `/shopify/health/` | Health check |
 | GET | `/shopify/install/` | Iniciar OAuth |
 | GET | `/shopify/callback/` | Callback OAuth |
+| GET | `/shopify/dashboard/` | Dashboard estadísticas |
 | GET | `/shopify/orders/` | Ver pedidos (JSON) |
 | GET | `/shopify/sync-orders/` | Sincronizar pedidos |
-| GET | `/shopify/sync-products/` | Sincronizar productos |
+| GET | `/shopify/sync-products/` | Sincronizar productos y variantes |
 | GET | `/shopify/sync-customers/` | Sincronizar clientes |
+| GET | `/shopify/map-products/` | Mapeo automático productos |
 | POST | `/shopify/webhook/orders/create/` | Webhook nuevos pedidos |
+| GET | `/shopify/register-webhook/` | Registrar webhook en Shopify |
 
 ### ERP Connector
 
 | Método | Endpoint | Descripción |
 |--------|----------|-------------|
-| GET | `/erp/test-connection/` | Test conexión ERP |
+| GET | `/erp/test-connection/` | Test conexión Verial |
+| GET | `/erp/products/` | Obtener productos Verial |
+| GET | `/erp/stock/` | Obtener stock Verial |
 
 ---
 
@@ -182,9 +187,20 @@ conector_shopify/
 - name: CharField (#1001, #1002...)
 - email: CharField
 - total_price: DecimalField
-- financial_status: CharField (paid, pending, refunded)
-- fulfillment_status: CharField (fulfilled, unfulfilled)
+- financial_status: CharField
+- fulfillment_status: CharField
 - created_at: DateTimeField
+```
+
+### OrderLine
+```python
+- order: ForeignKey(Order, related_name='lines')
+- shopify_id: BigIntegerField
+- product_title: CharField
+- variant_title: CharField
+- sku: CharField (igual que barcode)
+- quantity: IntegerField
+- price: DecimalField
 ```
 
 ### Product
@@ -194,8 +210,27 @@ conector_shopify/
 - title: CharField
 - vendor: CharField
 - product_type: CharField
-- status: CharField (active, draft, archived)
+- status: CharField
 - created_at: DateTimeField
+```
+
+### ProductVariant
+```python
+- product: ForeignKey(Product, related_name='variants')
+- shopify_id: BigIntegerField
+- title: CharField
+- sku: CharField
+- barcode: CharField (CLAVE PARA MAPEO)
+- price: DecimalField
+- inventory_quantity: IntegerField
+```
+
+### ProductMapping
+```python
+- variant: OneToOneField(ProductVariant, related_name='verial_mapping')
+- verial_id: BigIntegerField
+- verial_barcode: CharField
+- last_sync: DateTimeField
 ```
 
 ### Customer
@@ -209,14 +244,44 @@ conector_shopify/
 - created_at: DateTimeField
 ```
 
-### ERPSyncLog
+### CustomerMapping
 ```python
-- action: CharField (order_sent, product_sent, customer_sent, error)
-- shopify_id: BigIntegerField
-- erp_response: TextField
-- success: BooleanField
-- created_at: DateTimeField
+- customer: OneToOneField(Customer, related_name='verial_mapping')
+- verial_id: BigIntegerField
+- verial_nif: CharField
+- last_sync: DateTimeField
 ```
+
+---
+
+## 🔄 Flujos de sincronización
+
+### 1. Sincronizar productos
+```
+GET /shopify/sync-products/
+→ Obtiene productos de Shopify
+→ Guarda Product + ProductVariant (con barcode)
+→ Respuesta: {"products": 73, "variants": 79}
+```
+
+### 2. Mapeo automático de productos
+```
+GET /shopify/map-products/
+→ Obtiene artículos de Verial (GetArticulosWS)
+→ Busca coincidencias por código de barras
+→ Crea ProductMapping
+→ Respuesta: {"mapeados_nuevos": X, "sin_match": [...]}
+```
+
+### 3. Envío de pedido a Verial
+```python
+from shopify_app.order_to_verial import send_order_by_id
+
+success, message = send_order_by_id(order_id)
+```
+- Si el cliente ya tiene mapeo → usa `ID_Cliente`
+- Si es cliente nuevo → envía datos embebidos en el pedido
+- Verial crea el cliente automáticamente
 
 ---
 
@@ -224,11 +289,10 @@ conector_shopify/
 
 ### Orders Create
 
-Cuando se crea un pedido en Shopify, el webhook:
-
+Cuando se crea un pedido en Shopify:
 1. Recibe el POST de Shopify
 2. Valida el HMAC (seguridad)
-3. Guarda el pedido en la BD
+3. Guarda Order + OrderLine
 4. Responde 200 OK
 
 **Configuración en Shopify:**
@@ -242,11 +306,46 @@ Cuando se crea un pedido en Shopify, el webhook:
 
 Accede a: `http://127.0.0.1:8000/admin/`
 
+### Secciones:
+- **Pedidos** - Con líneas de pedido inline
+- **Productos** - Con variantes
+- **Variantes** - SKU, barcode, precio, stock
+- **Clientes**
+- **Mapeo de productos** - Variant ↔ Verial
+- **Mapeo de clientes** - Customer ↔ Verial
+
 ### Funcionalidades:
-- ✅ Ver pedidos, productos y clientes
 - ✅ Botón "Sincronizar" en cada sección
-- ✅ Ordenación por fecha (más reciente primero)
-- ✅ Logs de sincronización ERP
+- ✅ Filtros por estado de pago/envío
+- ✅ Búsqueda por nombre, email, SKU
+- ✅ Ordenación por fecha
+
+---
+
+## 🛠️ API Verial
+
+### Endpoints principales
+
+| Endpoint | Descripción |
+|----------|-------------|
+| GetArticulosWS | Obtener productos |
+| GetStockArticulosWS | Obtener stock |
+| GetClientesWS | Obtener clientes |
+| NuevoClienteWS | Crear/actualizar cliente |
+| NuevoDocClienteWS | Crear pedido (Tipo=5) |
+| EstadoPedidosWS | Consultar estado pedidos |
+
+### Respuesta estándar
+```json
+{
+  "InfoError": {
+    "Codigo": 0,
+    "Descripcion": null
+  }
+}
+```
+- `Codigo: 0` = OK
+- `Codigo: X` = Error
 
 ---
 
@@ -266,23 +365,14 @@ Usa la URL de ngrok para configurar webhooks en Shopify.
 
 ---
 
-## 🔐 Seguridad
-
-- ✅ Credenciales en `.env` (no en código)
-- ✅ `.gitignore` protege archivos sensibles
-- ✅ Validación HMAC en webhooks
-- ✅ CSRF exempt solo en webhooks
-- ✅ ALLOWED_HOSTS configurado
-
----
-
 ## 📝 Próximos pasos
 
-- [ ] Implementar conexión ERP Verial (webservices)
-- [ ] Webhook para productos nuevos
-- [ ] Webhook para clientes nuevos
-- [ ] Sincronización bidireccional con ERP
-- [ ] Deploy en servidor de producción
+- [ ] Botón en admin para enviar pedido a Verial
+- [ ] Envío automático cuando llega webhook
+- [ ] Incluir dirección de envío en pedidos
+- [ ] Sincronización de stock Verial → Shopify
+- [ ] Consultar estado de pedidos en Verial
+- [ ] Deploy en producción
 
 ---
 
@@ -290,9 +380,10 @@ Usa la URL de ngrok para configurar webhooks en Shopify.
 
 | Tecnología | Versión |
 |------------|---------|
-| Python | 3.14.2 |
+| Python | 3.12 |
 | Django | 6.0.1 |
 | Shopify API | 2024-01 |
+| Verial | Web Service REST |
 | Base de datos | SQLite (dev) |
 
 ---
@@ -311,4 +402,4 @@ Este proyecto es privado y de uso interno.
 
 ---
 
-> 💡 **Nota:** Este conector está diseñado para funcionar en paralelo sin afectar la tienda de Shopify ni interrumpir ventas.
+> 💡 **Nota:** Verial es el sistema maestro. Los compañeros siguen trabajando en Verial normalmente. El middleware solo sincroniza pedidos de Shopify hacia Verial.
