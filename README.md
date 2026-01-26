@@ -1,4 +1,4 @@
-# 🛒 Conector Shopify-Verial - Django
+# 🛒 Conector Shopify - Verial - Django
 
 > Middleware de integración entre Shopify y ERP Verial para sincronización de pedidos, productos y clientes.
 
