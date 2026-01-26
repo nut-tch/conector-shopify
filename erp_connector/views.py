@@ -1,69 +1,86 @@
-import os
 from django.http import JsonResponse
 from .models import ERPSyncLog
-
-# Credenciales ERP (se llenarán cuando las tengas)
-ERP_URL = os.getenv("ERP_URL", "")
-ERP_USER = os.getenv("ERP_USER", "")
-ERP_PASSWORD = os.getenv("ERP_PASSWORD", "")
-
-
-def send_order_to_erp(order):
-    """
-    Envía un pedido al ERP Verial.
-    Por implementar cuando tengamos credenciales.
-    """
-    if not ERP_URL:
-        return {"error": "ERP no configurado", "success": False}
-    
-    # TODO: Implementar llamada SOAP/REST al ERP
-    # payload = {...}
-    # response = requests.post(ERP_URL, ...)
-    
-    # Log temporal
-    ERPSyncLog.objects.create(
-        action="order_sent",
-        shopify_id=order.get("id"),
-        erp_response="Pendiente de implementar",
-        success=False
-    )
-    
-    return {"message": "Pendiente de implementar", "success": False}
-
-
-def send_customer_to_erp(customer):
-    """
-    Envía un cliente al ERP Verial.
-    Por implementar cuando tengamos credenciales.
-    """
-    if not ERP_URL:
-        return {"error": "ERP no configurado", "success": False}
-    
-    # TODO: Implementar llamada SOAP/REST al ERP
-    
-    ERPSyncLog.objects.create(
-        action="customer_sent",
-        shopify_id=customer.get("id"),
-        erp_response="Pendiente de implementar",
-        success=False
-    )
-    
-    return {"message": "Pendiente de implementar", "success": False}
+from .verial_client import VerialClient
 
 
 def test_erp_connection(request):
-    """
-    Endpoint para probar la conexión con el ERP.
-    """
-    if not ERP_URL:
+    """Endpoint para probar la conexión con Verial."""
+    client = VerialClient()
+    
+    if not client.is_configured():
         return JsonResponse({
             "status": "no_configurado",
-            "message": "Credenciales ERP pendientes"
+            "message": "Añade VERIAL_SERVER y VERIAL_SESSION en .env"
         })
     
-    # TODO: Implementar test de conexión
+    success, result = client.test_connection()
     
     return JsonResponse({
-        "status": "pendiente",
-        "message": "Test de conexión pendiente de implementar"
+        "status": "ok" if success else "error",
+        "message": result
     })
+
+
+def get_verial_products(request):
+    """Obtener productos de Verial."""
+    client = VerialClient()
+    
+    if not client.is_configured():
+        return JsonResponse({"error": "Verial no configurado"}, status=400)
+    
+    success, result = client.get_products()
+    
+    if success:
+        products = result.get("Articulos", [])
+        return JsonResponse({
+            "count": len(products),
+            "products": products[:50]
+        })
+    
+    return JsonResponse({"error": result}, status=500)
+
+
+def get_verial_stock(request):
+    """Obtener stock de Verial."""
+    client = VerialClient()
+    
+    if not client.is_configured():
+        return JsonResponse({"error": "Verial no configurado"}, status=400)
+    
+    success, result = client.get_stock()
+    
+    if success:
+        stock = result.get("Stock", [])
+        return JsonResponse({
+            "count": len(stock),
+            "stock": stock[:50]
+        })
+    
+    return JsonResponse({"error": result}, status=500)
+
+
+def send_order_to_verial(order):
+    """
+    Enviar un pedido de Shopify a Verial.
+    Retorna: (success, message, verial_id)
+    """
+    client = VerialClient()
+    
+    if not client.is_configured():
+        ERPSyncLog.objects.create(
+            action="error",
+            shopify_id=order.shopify_id,
+            erp_response="Verial no configurado",
+            success=False
+        )
+        return False, "Verial no configurado", None
+    
+    # TODO: Implementar mapeo de datos
+    ERPSyncLog.objects.create(
+        action="order_sent",
+        shopify_id=order.shopify_id,
+        erp_response="Pendiente de mapeo de datos",
+        success=False
+    )
+    
+    return False, "Pendiente de implementar mapeo", None
