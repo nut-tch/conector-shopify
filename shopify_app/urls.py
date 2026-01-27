@@ -13,4 +13,6 @@ urlpatterns = [
     path("register-webhook/", views.register_webhook),
     path("dashboard/", views.dashboard),
     path('map-products/', views.auto_map_products_view, name='auto_map_products'),
+    path("sync-stock/", views.sync_stock_view, name="sync_stock"),
+    path("test-locations/", views.test_locations_view, name="test_locations"),
 ]

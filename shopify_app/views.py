@@ -457,3 +457,28 @@ def auto_map_products_view(request):
         "result": result,
         "stats": stats
     })
+
+def sync_stock_view(request):
+    from .stock_sync import sync_stock_verial_to_shopify
+    
+    success, result = sync_stock_verial_to_shopify()
+    
+    return JsonResponse({
+        "success": success,
+        "result": result
+    })
+
+def test_locations_view(request):
+    shop = Shop.objects.first()
+    if not shop:
+        return JsonResponse({"error": "No hay tienda"})
+    
+    url = f"https://{shop.shop}/admin/api/2024-01/locations.json"
+    headers = {"X-Shopify-Access-Token": shop.access_token}
+    
+    response = requests.get(url, headers=headers)
+    
+    return JsonResponse({
+        "status_code": response.status_code,
+        "response": response.json() if response.ok else response.text
+    })

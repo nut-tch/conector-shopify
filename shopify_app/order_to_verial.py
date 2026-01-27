@@ -1,7 +1,8 @@
 import logging
 from decimal import Decimal
 from datetime import datetime
-from .models import Order, OrderLine, ProductMapping, ProductVariant, Customer, CustomerMapping
+from .models import Order, OrderLine, ProductMapping, ProductVariant, Customer
+from .services.customer_sync import ensure_customer_in_verial
 from erp_connector.verial_client import VerialClient
 
 logger = logging.getLogger('verial')
@@ -24,55 +25,9 @@ def get_line_mapping(line: OrderLine) -> ProductMapping:
     return None
 
 
-def build_customer_payload(order: Order) -> dict:
-    # Obtener datos del cliente desde Customer si existe
-    customer = Customer.objects.filter(email=order.email).first()
-    
-    if customer:
-        nombre = customer.first_name or ""
-        apellidos = (customer.last_name or "").split(" ", 1)
-        apellido1 = apellidos[0] if apellidos else ""
-        apellido2 = apellidos[1] if len(apellidos) > 1 else ""
-        telefono = customer.phone or ""
-    else:
-        # Usar datos básicos del pedido
-        nombre = order.email.split("@")[0] if order.email else "Cliente Web"
-        apellido1 = ""
-        apellido2 = ""
-        telefono = ""
-    
-    return {
-        "Tipo": 1,  # 1=Particular
-        "NIF": "",
-        "Nombre": nombre[:50],
-        "Apellido1": apellido1[:50],
-        "Apellido2": apellido2[:50],
-        "RazonSocial": "",
-        "ID_Pais": 1,  # España
-        "Provincia": "",
-        "Localidad": "",
-        "CPostal": "",
-        "Direccion": "",
-        "Telefono": telefono[:20],
-        "Email": order.email[:100] if order.email else "",
-        "WebUser": order.email[:100] if order.email else "",
-    }
-
-
-def build_order_payload(order: Order) -> dict:
+def build_order_payload(order: Order, id_cliente: int) -> dict:
     if not order.lines.exists():
         raise OrderToVerialError(f"Pedido {order.name} sin líneas")
-    
-    # Verificar si el cliente ya tiene mapeo
-    customer = Customer.objects.filter(email=order.email).first()
-    id_cliente = None
-    cliente_payload = None
-    
-    if customer and hasattr(customer, 'verial_mapping'):
-        id_cliente = customer.verial_mapping.verial_id
-    else:
-        # Enviar cliente embebido para que Verial lo cree
-        cliente_payload = build_customer_payload(order)
     
     # Construir líneas
     contenido = []
@@ -112,9 +67,10 @@ def build_order_payload(order: Order) -> dict:
     base_imponible = total / Decimal("1.21")
     
     payload = {
-        "Tipo": 5,  # Pedido
+        "Tipo": 5,
         "Referencia": order.name[:40],
         "Fecha": order.created_at.strftime("%Y-%m-%d"),
+        "ID_Cliente": id_cliente,
         "PreciosImpIncluidos": True,
         "BaseImponible": float(base_imponible.quantize(Decimal("0.01"))),
         "TotalImporte": float(total),
@@ -123,44 +79,24 @@ def build_order_payload(order: Order) -> dict:
         "Pagos": [],
     }
     
-    # Cliente ya existe en Verial
-    if id_cliente:
-        payload["ID_Cliente"] = id_cliente
-    # Cliente nuevo, enviar embebido
-    elif cliente_payload:
-        payload["Cliente"] = cliente_payload
-    
     return payload
 
 
-def save_customer_mapping(order: Order, verial_response: dict):
-    # Guardar el mapeo del cliente si Verial devolvió ID
-    customer = Customer.objects.filter(email=order.email).first()
-    if not customer:
-        return
-    
-    if hasattr(customer, 'verial_mapping'):
-        return
-    
-    # Buscar ID del cliente en la respuesta
-    cliente_data = verial_response.get("Cliente", {})
-    verial_id = cliente_data.get("Id")
-    
-    if verial_id:
-        CustomerMapping.objects.create(
-            customer=customer,
-            verial_id=verial_id,
-        )
-        logger.info(f"Cliente {customer.email} mapeado a Verial ID: {verial_id}")
-
-
 def send_order_to_verial(order: Order) -> tuple[bool, str]:
+    # Paso 1: Asegurar que el cliente existe en Verial
+    success, id_cliente = ensure_customer_in_verial(order)
+    
+    if not success or not id_cliente:
+        return False, f"No se pudo obtener/crear cliente en Verial para {order.email}"
+    
+    # Paso 2: Construir payload del pedido
     try:
-        payload = build_order_payload(order)
+        payload = build_order_payload(order, id_cliente)
     except OrderToVerialError as e:
         logger.error(f"Error construyendo pedido {order.name}: {e}")
         return False, str(e)
     
+    # Paso 3: Enviar pedido
     client = VerialClient()
     
     if not client.is_configured():
@@ -169,9 +105,7 @@ def send_order_to_verial(order: Order) -> tuple[bool, str]:
     success, result = client.create_order(payload)
     
     if success:
-        logger.info(f"Pedido {order.name} enviado a Verial")
-        # Guardar mapeo del cliente si es nuevo
-        save_customer_mapping(order, result)
+        logger.info(f"Pedido {order.name} enviado a Verial con cliente {id_cliente}")
         return True, f"Pedido {order.name} enviado correctamente"
     else:
         logger.error(f"Error enviando {order.name} a Verial: {result}")
