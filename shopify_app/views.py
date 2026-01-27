@@ -13,6 +13,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.db.models import Sum, Count
 from django.db.models.functions import TruncDate
 from urllib.parse import urlencode
+from django.utils.dateparse import parse_datetime
 
 from .models import Shop, Order, OrderLine, Product, ProductVariant, Customer
 
@@ -304,7 +305,6 @@ def webhook_orders_create(request):
         return HttpResponse("Método no permitido", status=405)
 
     shopify_hmac = request.headers.get("X-Shopify-Hmac-Sha256")
-
     if not shopify_hmac:
         return HttpResponse("Falta HMAC", status=400)
 
@@ -319,10 +319,12 @@ def webhook_orders_create(request):
     if not hmac.compare_digest(calculated_hmac, shopify_hmac):
         return HttpResponse("HMAC inválido", status=401)
 
-    data = json.loads(request.body)
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return HttpResponse("JSON inválido", status=400)
 
     shop = Shop.objects.first()
-
     if not shop:
         return HttpResponse("Tienda no encontrada", status=404)
 
@@ -335,11 +337,11 @@ def webhook_orders_create(request):
             "total_price": data["total_price"],
             "financial_status": data["financial_status"],
             "fulfillment_status": data.get("fulfillment_status", "") or "",
-            "created_at": data["created_at"]
+            "created_at": parse_datetime(data["created_at"]),
+            "status": "RECEIVED",
         }
     )
 
-    # Guardar líneas de pedido
     for item in data.get("line_items", []):
         OrderLine.objects.update_or_create(
             order=order,
@@ -349,14 +351,12 @@ def webhook_orders_create(request):
                 "variant_title": item.get("variant_title", "") or "",
                 "sku": item.get("sku", "") or "",
                 "quantity": item.get("quantity", 1),
-                "price": item.get("price", 0)
+                "price": item.get("price", 0),
             }
         )
 
-    print("✅ PEDIDO RECIBIDO:", data["name"])
-
+    print(f"✅ PEDIDO RECIBIDO: {order.name}")
     return HttpResponse("OK", status=200)
-
 
 def register_webhook(request):
     shop = Shop.objects.first()

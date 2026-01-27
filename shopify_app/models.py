@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 
 class Shop(models.Model):
@@ -14,6 +15,13 @@ class Shop(models.Model):
 
 
 class Order(models.Model):
+    STATUS_CHOICES = [
+        ("RECEIVED", "Received"),
+        ("READY", "Ready"),
+        ("SENT", "Sent"),
+        ("ERROR", "Error"),
+    ]
+
     shop = models.ForeignKey(Shop, on_delete=models.CASCADE)
     shopify_id = models.BigIntegerField(unique=True)
     name = models.CharField(max_length=50, verbose_name="Número")
@@ -22,6 +30,17 @@ class Order(models.Model):
     financial_status = models.CharField(max_length=50, verbose_name="Estado pago")
     fulfillment_status = models.CharField(max_length=50, blank=True, verbose_name="Estado envío")
     created_at = models.DateTimeField(verbose_name="Fecha")
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="RECEIVED"
+    )
+
+    received_at = models.DateTimeField(default=timezone.now)
+    sent_to_verial = models.BooleanField(default=False)
+    sent_to_verial_at = models.DateTimeField(null=True, blank=True)
+    verial_error = models.TextField(blank=True)
 
     class Meta:
         verbose_name = "Pedido"

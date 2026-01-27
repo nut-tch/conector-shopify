@@ -1,6 +1,3 @@
-"""
-Mapeo automático de productos Shopify ↔ Verial por código de barras.
-"""
 import logging
 from django.utils import timezone
 from .models import ProductVariant, ProductMapping
@@ -8,11 +5,8 @@ from erp_connector.verial_client import VerialClient
 
 logger = logging.getLogger('verial')
 
-
 def get_verial_products_by_barcode():
-    """
-    Obtiene productos de Verial indexados por código de barras.
-    """
+    
     client = VerialClient()
     
     if not client.is_configured():
@@ -26,7 +20,7 @@ def get_verial_products_by_barcode():
     # Indexar por código de barras
     productos = {}
     for art in result.get("Articulos", []):
-        barcode = art.get("Barras", "").strip()
+        barcode = art.get("ReferenciaBarras", "").strip()
         if barcode:
             productos[barcode] = {
                 "id": art.get("Id"),
@@ -36,15 +30,7 @@ def get_verial_products_by_barcode():
     
     return True, productos
 
-
 def auto_map_products_by_barcode():
-    """
-    Mapea automáticamente variantes de Shopify con artículos de Verial
-    usando el código de barras como clave.
-    
-    Returns:
-        (success, result_dict)
-    """
     # Obtener catálogo Verial
     success, verial_products = get_verial_products_by_barcode()
     
@@ -114,9 +100,6 @@ def auto_map_products_by_barcode():
 
 
 def get_mapping_stats():
-    """
-    Devuelve estadísticas del estado del mapeo.
-    """
     total_variants = ProductVariant.objects.count()
     mapeados = ProductMapping.objects.count()
     sin_mapear = total_variants - mapeados

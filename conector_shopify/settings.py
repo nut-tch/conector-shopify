@@ -30,7 +30,11 @@ SECRET_KEY = os.getenv("SECRET_KEY", "clave-temporal-cambiar-en-produccion")
 
 DEBUG = os.getenv("DEBUG", "False") == "True"
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",")
+
+SEND_TO_VERIAL = os.getenv("SEND_TO_VERIAL", "false").lower() == "true"
+
+
 
 # Application definition
 

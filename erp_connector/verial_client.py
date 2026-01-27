@@ -7,10 +7,7 @@ logger = logging.getLogger('verial')
 
 
 class VerialClient:
-    """
-    Cliente para conectar con el webservice de Verial.
-    """
-    
+     
     def __init__(self):
         self.server = os.getenv("VERIAL_SERVER", "")
         self.session = os.getenv("VERIAL_SESSION", "")
@@ -47,15 +44,23 @@ class VerialClient:
         session = self.online_session if use_online_session else self.session
         payload["sesionwcf"] = session
         
+        print("📦 PAYLOAD ENVIADO A VERIAL:")
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+
         try:
             r = requests.post(url, headers=headers, data=json.dumps(payload), timeout=30)
+            print("📨 RESPUESTA VERIAL:")
+            print("Status:", r.status_code)
+            print("Body:", r.text)
+
             return self._handle_response(r)
         except Exception as e:
-            logger.error(f"POST {endpoint} -> Error: {e}")
-            return False, str(e)
+            print("❌ EXCEPCIÓN EN REQUEST A VERIAL:")
+            print(str(e))
+            #logger.error(f"POST {endpoint} -> Error: {e}")
+        return False, str(e)
     
     def _handle_response(self, response):
-        """Procesa la respuesta del webservice."""
         if response.ok:
             data = response.json()
             if data.get("InfoError", {}).get("Codigo") == 0:
@@ -68,30 +73,24 @@ class VerialClient:
     # ==================== MÉTODOS DE LECTURA ====================
     
     def get_products(self):
-        """Obtener todos los productos de Verial."""
         return self._get("GetArticulosWS")
     
     def get_stock(self, product_id=0):
-        """Obtener stock de productos."""
         return self._get("GetStockArticulosWS", f"&id_articulo={product_id}")
     
     def get_customers(self, customer_id=0, nif=None):
-        """Obtener clientes de Verial."""
         params = f"&id_cliente={customer_id}"
         if nif:
             params += f"&nif={nif}"
         return self._get("GetClientesWS", params)
     
     def get_countries(self):
-        """Obtener países."""
         return self._get("GetPaisesWS")
     
     def get_states(self):
-        """Obtener provincias."""
         return self._get("GetProvinciasWS")
     
     def get_cities(self):
-        """Obtener localidades."""
         return self._get("GetLocalidadesWS")
     
     # ==================== MÉTODOS DE ESCRITURA ====================
