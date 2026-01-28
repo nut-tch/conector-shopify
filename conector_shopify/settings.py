@@ -138,3 +138,21 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 SHOPIFY_API_SECRET = os.getenv("SHOPIFY_API_SECRET")
 
+VERIAL_SERVER = os.getenv("VERIAL_SERVER")
+VERIAL_SESSION = os.getenv("VERIAL_SESSION")
+
+VERIAL_ONLINE_SESSION = os.getenv("VERIAL_ONLINE_SESSION")
+
+VERIAL_BASE_URL = F"http://{VERIAL_SERVER}/WcfServiceLibraryVerial"
+
+
+VERIAL_HEADERS = {
+    "Content-Type": "application/json"
+}
+
+# Clientes (API CLÁSICA)
+VERIAL_SEARCH_CLIENT_URL = f"{VERIAL_BASE_URL}/BuscarClienteWS"
+VERIAL_CREATE_CLIENT_URL = f"{VERIAL_BASE_URL}/NuevoClienteWS"
+
+# Pedidos
+VERIAL_CREATE_ORDER_URL = f"{VERIAL_BASE_URL}/NuevoDocClienteWS"
