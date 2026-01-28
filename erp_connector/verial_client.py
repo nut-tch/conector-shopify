@@ -70,6 +70,7 @@ class VerialClient:
                 return False, error_msg
         return False, f"{response.status_code} {response.reason}"
     
+    
     # ==================== MÉTODOS DE LECTURA ====================
     
     def get_products(self):

@@ -30,7 +30,7 @@ class Order(models.Model):
     financial_status = models.CharField(max_length=50, verbose_name="Estado pago")
     fulfillment_status = models.CharField(max_length=50, blank=True, verbose_name="Estado envío")
     created_at = models.DateTimeField(verbose_name="Fecha")
-
+    verial_status = models.CharField(max_length=20, blank=True, default='')
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
