@@ -146,3 +146,29 @@ class CustomerMapping(models.Model):
     
     def __str__(self):
         return f"{self.customer} → Verial ID: {self.verial_id}"
+
+class OrderMapping(models.Model):
+    order = models.OneToOneField(
+        Order, 
+        on_delete=models.CASCADE, 
+        related_name='verial_mapping'
+    )
+    verial_id = models.BigIntegerField(verbose_name="ID Verial")
+    verial_referencia = models.CharField(
+        max_length=50, 
+        verbose_name="Referencia enviada"
+    )
+    verial_numero = models.CharField(
+        max_length=20, 
+        blank=True, 
+        verbose_name="Número Verial"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_sync = models.DateTimeField(auto_now=True, verbose_name="Última sincronización")
+    
+    class Meta:
+        verbose_name = "Mapeo de pedido"
+        verbose_name_plural = "Mapeos de pedidos"
+    
+    def __str__(self):
+        return f"{self.order.name} → Verial ID: {self.verial_id}"
