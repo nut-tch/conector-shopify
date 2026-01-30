@@ -1,66 +1,95 @@
 import logging
-from django.utils import timezone
+from django.db import transaction
 from .models import ProductVariant, ProductMapping
 from erp_connector.verial_client import VerialClient
 
 logger = logging.getLogger('verial')
 
 def get_verial_products_by_barcode():
-    
+    """
+    Obtiene el catálogo completo de Verial indexado por código de barras.
+    """
     client = VerialClient()
-    
     if not client.is_configured():
-        return False, "Verial no configurado"
+        return False, "Verial no configurado en settings"
     
-    success, result = client.get_products()
+    # Usamos el método corregido del cliente
+    success, result = client.get_articles() 
     
     if not success:
         return False, result
     
-    # Indexar por código de barras
-    productos = {}
+    productos_indexados = {}
+    # El API de Verial devuelve una lista en la clave 'Articulos'
     for art in result.get("Articulos", []):
-        barcode = art.get("ReferenciaBarras", "").strip()
+        # Normalización: El código de barras en Verial suele estar en 'ReferenciaBarras'
+        barcode = str(art.get("ReferenciaBarras") or "").strip()
         if barcode:
-            productos[barcode] = {
+            productos_indexados[barcode] = {
                 "id": art.get("Id"),
                 "nombre": art.get("Nombre", ""),
                 "barcode": barcode,
             }
     
-    return True, productos
+    return True, productos_indexados
 
-def auto_map_products_by_barcode():
-    # Obtener catálogo Verial
+def ensure_product_mapping(variant: ProductVariant):
+    """
+    Busca o crea el mapeo para una variante específica.
+    MEJORA: Si no existe, usa get_stock(id_articulo) si tuviéramos el ID, 
+    pero como buscamos por Barcode, usamos la caché de búsqueda.
+    """
+    # 1. Si ya existe el mapeo en nuestra base de datos, lo devolvemos
+    mapping = ProductMapping.objects.filter(variant=variant).first()
+    if mapping:
+        return mapping
+
+    # 2. Si no existe, intentamos buscarlo en Verial por código de barras
+    barcode_limpio = str(variant.barcode or "").strip()
+    if not barcode_limpio:
+        logger.warning(f"Variante {variant.sku} no tiene barcode. Imposible mapear.")
+        return None
+
+    logger.info(f"Buscando mapeo en Verial para Barcode: {barcode_limpio}...")
+    
+    # Buscamos en el catálogo de Verial
     success, verial_products = get_verial_products_by_barcode()
     
+    if success and isinstance(verial_products, dict):
+        verial_art = verial_products.get(barcode_limpio)
+        if verial_art:
+            with transaction.atomic():
+                mapping, created = ProductMapping.objects.update_or_create(
+                    variant=variant,
+                    defaults={
+                        "verial_id": verial_art["id"],
+                        "verial_barcode": verial_art["barcode"],
+                    }
+                )
+            logger.info(f"✅ Mapeo creado: {variant.sku} -> Verial ID {verial_art['id']}")
+            return mapping
+            
+    logger.error(f"❌ No se encontró el barcode {barcode_limpio} en el catálogo de Verial.")
+    return None
+
+def auto_map_products_by_barcode():
+    """
+    Sincronización masiva de catálogo.
+    """
+    success, verial_products = get_verial_products_by_barcode()
     if not success:
         return False, {"error": verial_products}
     
-    if not verial_products:
-        return False, {"error": "No se encontraron productos en Verial con código de barras"}
+    stats = {"nuevos": 0, "actualizados": 0, "sin_match": []}
     
-    # Estadísticas
-    mapeados = 0
-    actualizados = 0
-    sin_barcode_shopify = 0
-    sin_match = []
-    
-    # Recorrer variantes de Shopify con barcode
+    # Procesamos variantes con barcode
     variants = ProductVariant.objects.exclude(barcode="").exclude(barcode__isnull=True)
     
     for variant in variants:
-        barcode = variant.barcode.strip()
-        
-        if not barcode:
-            sin_barcode_shopify += 1
-            continue
-        
-        # Buscar en Verial
+        barcode = str(variant.barcode).strip()
         verial_art = verial_products.get(barcode)
         
         if verial_art:
-            # Crear o actualizar mapeo
             mapping, created = ProductMapping.objects.update_or_create(
                 variant=variant,
                 defaults={
@@ -68,47 +97,9 @@ def auto_map_products_by_barcode():
                     "verial_barcode": verial_art["barcode"],
                 }
             )
-            
-            if created:
-                mapeados += 1
-                logger.info(f"Mapeado: {variant} → Verial {verial_art['id']}")
-            else:
-                actualizados += 1
+            if created: stats["nuevos"] += 1
+            else: stats["actualizados"] += 1
         else:
-            sin_match.append({
-                "variant": str(variant),
-                "barcode": barcode,
-                "sku": variant.sku,
-            })
-    
-    # Variantes sin barcode
-    total_sin_barcode = ProductVariant.objects.filter(
-        barcode=""
-    ).count() + ProductVariant.objects.filter(barcode__isnull=True).count()
-    
-    result = {
-        "verial_productos": len(verial_products),
-        "mapeados_nuevos": mapeados,
-        "actualizados": actualizados,
-        "sin_match": sin_match,
-        "sin_barcode_shopify": total_sin_barcode,
-    }
-    
-    logger.info(f"Mapeo completado: {mapeados} nuevos, {actualizados} actualizados, {len(sin_match)} sin match")
-    
-    return True, result
-
-
-def get_mapping_stats():
-    total_variants = ProductVariant.objects.count()
-    mapeados = ProductMapping.objects.count()
-    sin_mapear = total_variants - mapeados
-    sin_barcode = ProductVariant.objects.filter(barcode="").count()
-    
-    return {
-        "total_variants": total_variants,
-        "mapeados": mapeados,
-        "sin_mapear": sin_mapear,
-        "sin_barcode": sin_barcode,
-        "porcentaje": round((mapeados / total_variants * 100), 1) if total_variants > 0 else 0,
-    }
+            stats["sin_match"].append(barcode)
+            
+    return True, stats

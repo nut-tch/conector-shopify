@@ -1,141 +1,102 @@
 import logging
-from decimal import Decimal
-from django.conf import settings
+import json
+from datetime import datetime
 from django.utils import timezone
-from .models import Order, OrderLine, ProductVariant, OrderMapping
+from .models import Order, OrderMapping, OrderLine, ProductVariant
 from .services.customer_sync import ensure_customer_in_verial
+from .product_mapping import ensure_product_mapping
 from erp_connector.verial_client import VerialClient
 
 logger = logging.getLogger("verial")
 
-
 class OrderToVerialError(Exception):
     pass
 
-
 def get_line_mapping(line: OrderLine):
-    """Obtiene el mapeo de Verial para una línea de pedido."""
+    variant = None
     if line.sku:
         variant = ProductVariant.objects.filter(sku=line.sku).first()
-        if variant and hasattr(variant, "verial_mapping"):
-            return variant.verial_mapping
-
-    variant = ProductVariant.objects.filter(product__title=line.product_title).first()
-    if variant and hasattr(variant, "verial_mapping"):
-        return variant.verial_mapping
-
+    if not variant:
+        variant = ProductVariant.objects.filter(
+            product__title=line.product_title, 
+            title=line.variant_title
+        ).first()
+    if variant:
+        return ensure_product_mapping(variant)
     return None
-
 
 def build_order_payload(order: Order, id_cliente: int) -> dict:
     """
-    Construye el payload para enviar a Verial.
-    
-    IMPORTANTE: No incluir 'ImporteLinea' en las líneas.
+    Construye el payload con la estructura validada para NuevoDocClienteWS (Tipo 5).
     """
-    if not order.lines.exists():
-        raise OrderToVerialError("Pedido sin líneas")
-
-    contenido = []
+    lineas_verial = []
     for line in order.lines.all():
         mapping = get_line_mapping(line)
         if not mapping:
-            raise OrderToVerialError(
-                f"Producto sin mapear: {line.product_title}"
-            )
+            raise OrderToVerialError(f"Producto sin mapear en Shopify: {line.product_title}")
 
-        precio = float(line.price)
-        cantidad = line.quantity
-
-        contenido.append({
-            "TipoRegistro": 1,
-            "ID_Articulo": mapping.verial_id,
-            "Uds": cantidad,
-            "Precio": precio,
-            "Dto": 0,
-            "PorcentajeIVA": 21
-            # NO incluir ImporteLinea - Verial lo calcula
+        # Estructura VALIDADA: Usamos ID_Articulo, Uds y TipoRegistro
+        lineas_verial.append({
+            "TipoRegistro": 1,          # Fijo para artículos
+            "ID_Articulo": int(mapping.verial_id),
+            "Uds": float(line.quantity),
+            "Precio": round(float(line.price), 2),
+            "PorcentajeIVA": 21.0,      # Verial espera este nombre de campo
+            "Dto": 0.0
         })
 
-    total = Decimal(order.total_price)
-    base = (total / Decimal("1.21")).quantize(Decimal("0.01"))
+    total = round(float(order.total_price), 2)
     
-    # Referencia única para identificar el pedido
-    referencia = f"SHOP-{order.shopify_id}"
-
-    return {
-        "Tipo": 5,
-        "Referencia": referencia,
-        "Fecha": order.created_at.strftime("%Y-%m-%d"),
-        "ID_Cliente": id_cliente,
-        "PreciosImpIncluidos": True,
-        "BaseImponible": float(base),
-        "TotalImporte": float(total),
-        "Comentario": f"Pedido Shopify {order.name}",
-        "Contenido": contenido,
+    # Estructura VALIDADA para NuevoDocClienteWS
+    payload = {
+        "Tipo": 5,                      # 5 = Presupuesto/Pedido (Evita Veri*Factu)
+        "ID_Cliente": int(id_cliente),
+        "Fecha": datetime.now().isoformat(),
+        "Referencia": f"S{order.name}"[:20], # Usamos order.name (ej: #1001)
+        "TotalImporte": total,           # Importante: Nombre exacto
+        "PreciosImpIncluidos": True,     # Importante: Nombre exacto
+        "Contenido": lineas_verial,      # Importante: En lugar de "Lineas"
         "Pagos": []
     }
-
+    
+    logger.info(f"DEBUG PAYLOAD ENVIADO: {json.dumps(payload)}")
+    return payload
 
 def send_order_to_verial(order: Order):
-    """
-    Envía un pedido a Verial y guarda el mapeo.
-    
-    Returns:
-        (True, "Pedido enviado") en caso de éxito
-        (False, "mensaje de error") en caso de error
-    """
-    # 1️⃣ Asegurar cliente en Verial
+    # 1. Asegurar que el cliente existe o crearlo
     ok, id_cliente = ensure_customer_in_verial(order)
     if not ok:
-        return False, id_cliente
+        return False, f"Error Cliente: {id_cliente}"
 
-    # 2️⃣ Construir payload
     try:
+        # 2. Construir el payload con los campos que funcionan
         payload = build_order_payload(order, id_cliente)
-    except OrderToVerialError as e:
-        return False, str(e)
-    except Exception as e:
-        logger.error(f"Error construyendo payload: {e}")
-        return False, str(e)
-
-    # 3️⃣ Enviar a Verial
-    client = VerialClient()
-    success, response = client.create_order(payload)
-
-    if success:
-        # 4️⃣ GUARDAR MAPEO
-        verial_id = response.get("Id")
-        verial_numero = str(response.get("Numero", ""))
         
-        if verial_id:
+        # 3. Usar el cliente corregido
+        client = VerialClient()
+        success, response = client.create_order(payload)
+
+        if success:
+            # Verial devuelve el ID del documento creado
+            verial_id = response.get("Id")
+            
+            # Guardamos el mapeo para evitar duplicados futuros
             OrderMapping.objects.update_or_create(
                 order=order,
                 defaults={
                     "verial_id": verial_id,
                     "verial_referencia": payload["Referencia"],
-                    "verial_numero": verial_numero
+                    "verial_numero": str(verial_id) # O el campo Numero si viniera
                 }
             )
-            logger.info(
-                f"Pedido {order.name} enviado a Verial: "
-                f"ID={verial_id}, Numero={verial_numero}"
-            )
+            
+            return True, "Pedido inyectado correctamente"
         else:
-            logger.warning(
-                f"Pedido {order.name} enviado pero sin ID en respuesta: {response}"
-            )
-        
-        # 5️⃣ Actualizar estado del pedido
-        order.sent_to_verial = True
-        order.sent_to_verial_at = timezone.now()
-        order.verial_error = ""
-        order.save()
-        
-        return True, "Pedido enviado"
-    else:
-        # Error al enviar
-        order.verial_error = str(response)[:500]
-        order.save()
-        logger.error(f"Error enviando pedido {order.name}: {response}")
-        return False, response
+            # Aquí 'response' contiene la descripción del error de Verial
+            return False, str(response)
+
+    except OrderToVerialError as e:
+        return False, str(e)
+    except Exception as e:
+        logger.error(f"Error crítico enviando pedido {order.id}: {e}")
+        return False, str(e)

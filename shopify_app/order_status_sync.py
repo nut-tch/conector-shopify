@@ -1,10 +1,10 @@
 import logging
-from ..models import Order, OrderMapping
+from shopify_app.models import Order, OrderMapping
 from erp_connector.verial_client import VerialClient
 
 logger = logging.getLogger('verial')
 
-# Mapeo de estados Verial
+# Mapeo descriptivo para logs o interfaz
 ESTADO_MAP = {
     0: "no_existe",
     1: "recibido",
@@ -13,132 +13,90 @@ ESTADO_MAP = {
     4: "enviado"
 }
 
-
 def sync_order_status():
     """
-    Consulta estado de pedidos en Verial y actualiza en Django.
-    
-    Solo consulta pedidos que:
-    - Tienen mapeo con Verial (OrderMapping)
-    - No están completados (verial_status != '4')
-    
-    Returns:
-        (True, dict) con estadísticas
-        (False, dict) con error
+    Sincroniza los estados de los pedidos desde Verial hacia Django/Shopify.
+    Este proceso lo corre el sync_runner cada 5 minutos.
     """
-    # 1️⃣ Obtener pedidos con mapeo que no estén completados
+    # 1. Filtramos pedidos que tienen mapeo pero no están terminados
     mappings = OrderMapping.objects.select_related('order').exclude(
-        order__verial_status='4'
+        order__status='COMPLETED'
     )
     
     if not mappings.exists():
-        return True, {"message": "No hay pedidos pendientes de actualizar"}
+        return True, {"actualizados": 0, "message": "No hay pedidos pendientes"}
 
     client = VerialClient()
-    if not client.is_configured():
-        return False, {"error": "Verial no configurado"}
-
-    # 2️⃣ Preparar lista de IDs para consultar (máx 25 por petición)
     mappings_list = list(mappings)
     total_actualizados = 0
-    total_consultados = 0
-    errores = []
-
-    # Procesar en lotes de 25
-    for i in range(0, len(mappings_list), 25):
-        lote = mappings_list[i:i+25]
+    
+    # 2. Procesar en lotes (Verial acepta múltiples IDs en EstadoPedidosWS)
+    batch_size = 25
+    for i in range(0, len(mappings_list), batch_size):
+        lote = mappings_list[i:i+batch_size]
+        # Formateamos para el payload de EstadoPedidosWS
         pedidos_consulta = [{"Id": m.verial_id} for m in lote]
         
+        # El cliente ya gestiona la sesión 'use_online_session=True' internamente
         success, result = client.get_orders_status(pedidos_consulta)
-        
         if not success:
-            errores.append(f"Lote {i//25 + 1}: {result}")
+            logger.error(f"Error consultando estados: {result}")
             continue
 
-        total_consultados += len(pedidos_consulta)
-        
-        # 3️⃣ Procesar respuesta
-        estados = result.get("Pedidos", [])
-        
-        # Crear dict de mapping por verial_id para búsqueda rápida
+        estados_verial = result.get("Pedidos", [])
         mapping_dict = {m.verial_id: m for m in lote}
         
-        for estado in estados:
-            verial_id = estado.get("Id")
-            verial_estado = estado.get("Estado", 0)
+        for estado_data in estados_verial:
+            v_id = estado_data.get("Id")
+            verial_estado = estado_data.get("Estado", 0) # 0, 1, 2, 3 o 4
             
-            mapping = mapping_dict.get(verial_id)
+            mapping = mapping_dict.get(v_id)
             if not mapping:
                 continue
                 
             order = mapping.order
-            old_status = order.verial_status
+            new_status_str = str(verial_estado)
             
-            # Actualizar estado
-            order.verial_status = str(verial_estado)
-            
-            # Actualizar fulfillment_status según estado Verial
-            if verial_estado == 4:
-                order.fulfillment_status = "fulfilled"
-            elif verial_estado in [2, 3]:
-                order.fulfillment_status = "partial"
-            
-            order.save()
-            
-            # Log si cambió el estado
-            if old_status != str(verial_estado):
-                logger.info(
-                    f"Pedido {order.name} (Verial ID: {verial_id}): "
-                    f"{ESTADO_MAP.get(int(old_status) if old_status else 0, 'desconocido')} → "
-                    f"{ESTADO_MAP.get(verial_estado, 'desconocido')}"
-                )
-            
-            total_actualizados += 1
+            # Solo actualizamos si el estado ha cambiado en el ERP
+            if order.verial_status != new_status_str:
+                order.verial_status = new_status_str
+                
+                # Lógica de transición de estados
+                if verial_estado == 4: # Enviado
+                    order.status = "COMPLETED"
+                    order.fulfillment_status = "fulfilled"
+                elif verial_estado in [2, 3]: # En preparación o Preparado
+                    order.status = "IN_PROGRESS"
+                    order.fulfillment_status = "partial"
+                
+                # Guardamos solo los campos necesarios
+                order.save(update_fields=['verial_status', 'status', 'fulfillment_status'])
+                total_actualizados += 1
+                
+                logger.info(f"ORDEN {order.name}: Estado Verial actualizado a {ESTADO_MAP.get(verial_estado)}")
 
-    return True, {
-        "total_pedidos": len(mappings_list),
-        "consultados": total_consultados,
-        "actualizados": total_actualizados,
-        "errores": errores if errores else None
-    }
-
+    return True, {"actualizados": total_actualizados}
 
 def sync_single_order(order: Order):
-    """
-    Sincroniza el estado de un pedido específico.
-    
-    Args:
-        order: Instancia de Order
-        
-    Returns:
-        (True, estado) o (False, error)
-    """
-    if not hasattr(order, 'verial_mapping'):
-        return False, "Pedido no tiene mapeo con Verial"
-    
-    mapping = order.verial_mapping
+    """Permite forzar la actualización de un solo pedido (ej. desde un botón en Admin)"""
+    mapping = OrderMapping.objects.filter(order=order).first()
+    if not mapping:
+        return False, "Pedido no vinculado a Verial"
     
     client = VerialClient()
-    if not client.is_configured():
-        return False, "Verial no configurado"
-    
     success, result = client.get_orders_status([{"Id": mapping.verial_id}])
     
-    if not success:
-        return False, result
+    if success and result.get("Pedidos"):
+        verial_estado = result["Pedidos"][0].get("Estado", 0)
+        order.verial_status = str(verial_estado)
+        
+        if verial_estado == 4:
+            order.status = "COMPLETED"
+            order.fulfillment_status = "fulfilled"
+        elif verial_estado in [2, 3]:
+            order.fulfillment_status = "partial"
+            
+        order.save()
+        return True, ESTADO_MAP.get(verial_estado, "desconocido")
     
-    estados = result.get("Pedidos", [])
-    if not estados:
-        return False, "No se encontró el pedido en Verial"
-    
-    estado = estados[0]
-    verial_estado = estado.get("Estado", 0)
-    
-    order.verial_status = str(verial_estado)
-    if verial_estado == 4:
-        order.fulfillment_status = "fulfilled"
-    elif verial_estado in [2, 3]:
-        order.fulfillment_status = "partial"
-    order.save()
-    
-    return True, ESTADO_MAP.get(verial_estado, "desconocido")
+    return False, "No se pudo obtener respuesta del ERP"
