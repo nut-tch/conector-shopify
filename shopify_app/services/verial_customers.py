@@ -14,14 +14,12 @@ def get_or_create_verial_customer(customer: Customer):
     Devuelve (success, verial_customer_id | error_msg)
     """
 
-    # 1️⃣ Reutilizar mapping si existe
     try:
         mapping = customer.verial_mapping
         return True, mapping.verial_id
     except CustomerMapping.DoesNotExist:
         pass
 
-    # 2️⃣ Crear cliente directamente (como el middleware viejo)
     payload = {
         "sesionwcf": int(settings.VERIAL_SESSION),
         "Tipo": 1,

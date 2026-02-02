@@ -153,7 +153,9 @@ def sync_orders(request):
                 "total_price": order_data["total_price"],
                 "financial_status": order_data["financial_status"],
                 "fulfillment_status": order_data.get("fulfillment_status", "") or "",
-                "created_at": order_data["created_at"]
+                "created_at": parse_datetime(order_data["created_at"]),
+                "status": "RECEIVED",
+                "sent_to_verial": False,
             }
         )
 
@@ -221,12 +223,11 @@ def sync_products(request):
                 "vendor": product_data.get("vendor", ""),
                 "product_type": product_data.get("product_type", ""),
                 "status": product_data["status"],
-                "created_at": product_data["created_at"]
+                "created_at": parse_datetime(product_data["created_at"]),
             }
         )
         saved_products += 1
         
-        # Guardar variantes con barcode
         for variant_data in product_data.get("variants", []):
             ProductVariant.objects.update_or_create(
                 shopify_id=variant_data["id"],
@@ -288,7 +289,7 @@ def sync_customers(request):
                 "first_name": customer.get("first_name", "") or "",
                 "last_name": customer.get("last_name", "") or "",
                 "phone": customer.get("phone", "") or "",
-                "created_at": customer["created_at"]
+                "created_at": parse_datetime(customer["created_at"]),
             }
         )
         saved += 1
@@ -339,6 +340,7 @@ def webhook_orders_create(request):
             "fulfillment_status": data.get("fulfillment_status", "") or "",
             "created_at": parse_datetime(data["created_at"]),
             "status": "RECEIVED",
+            "sent_to_verial": False,
         }
     )
 

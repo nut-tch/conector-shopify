@@ -4,7 +4,6 @@ from erp_connector.verial_client import VerialClient
 
 logger = logging.getLogger('verial')
 
-# Mapeo descriptivo para logs o interfaz
 ESTADO_MAP = {
     0: "no_existe",
     1: "recibido",
@@ -18,7 +17,6 @@ def sync_order_status():
     Sincroniza los estados de los pedidos desde Verial hacia Django/Shopify.
     Este proceso lo corre el sync_runner cada 5 minutos.
     """
-    # 1. Filtramos pedidos que tienen mapeo pero no están terminados
     mappings = OrderMapping.objects.select_related('order').exclude(
         order__status='COMPLETED'
     )
@@ -30,14 +28,11 @@ def sync_order_status():
     mappings_list = list(mappings)
     total_actualizados = 0
     
-    # 2. Procesar en lotes (Verial acepta múltiples IDs en EstadoPedidosWS)
     batch_size = 25
     for i in range(0, len(mappings_list), batch_size):
         lote = mappings_list[i:i+batch_size]
-        # Formateamos para el payload de EstadoPedidosWS
         pedidos_consulta = [{"Id": m.verial_id} for m in lote]
         
-        # El cliente ya gestiona la sesión 'use_online_session=True' internamente
         success, result = client.get_orders_status(pedidos_consulta)
         if not success:
             logger.error(f"Error consultando estados: {result}")
@@ -48,7 +43,7 @@ def sync_order_status():
         
         for estado_data in estados_verial:
             v_id = estado_data.get("Id")
-            verial_estado = estado_data.get("Estado", 0) # 0, 1, 2, 3 o 4
+            verial_estado = estado_data.get("Estado", 0)
             
             mapping = mapping_dict.get(v_id)
             if not mapping:
@@ -57,19 +52,16 @@ def sync_order_status():
             order = mapping.order
             new_status_str = str(verial_estado)
             
-            # Solo actualizamos si el estado ha cambiado en el ERP
             if order.verial_status != new_status_str:
                 order.verial_status = new_status_str
                 
-                # Lógica de transición de estados
-                if verial_estado == 4: # Enviado
+                if verial_estado == 4: 
                     order.status = "COMPLETED"
                     order.fulfillment_status = "fulfilled"
-                elif verial_estado in [2, 3]: # En preparación o Preparado
+                elif verial_estado in [2, 3]:
                     order.status = "IN_PROGRESS"
                     order.fulfillment_status = "partial"
                 
-                # Guardamos solo los campos necesarios
                 order.save(update_fields=['verial_status', 'status', 'fulfillment_status'])
                 total_actualizados += 1
                 

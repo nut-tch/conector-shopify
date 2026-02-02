@@ -1,9 +1,9 @@
 from django.core.management.base import BaseCommand
 from shopify_app.models import Order
-from shopify_app.services.verial_sender import send_order
+from shopify_app.order_to_verial import send_order_to_verial
 
 class Command(BaseCommand):
-    help = "Envía pedidos pendientes a Verial"
+    help = "Envía pedidos pendientes de Shopify a Verial"
 
     def handle(self, *args, **options):
         orders = Order.objects.filter(
@@ -12,18 +12,21 @@ class Command(BaseCommand):
         )
 
         if not orders.exists():
-            self.stdout.write("No hay pedidos pendientes.")
+            self.stdout.write(self.style.SUCCESS("✨ No hay pedidos pendientes de envío."))
             return
 
+        self.stdout.write(f"📦 Se han encontrado {orders.count()} pedidos para procesar.")
+
         for order in orders:
-            self.stdout.write(f"Enviando pedido {order.name}...")
-            success = send_order(order)
+            self.stdout.write(f"🚀 Procesando pedido {order.name}...")
+            
+            success, message = send_order_to_verial(order)
 
             if success:
                 self.stdout.write(self.style.SUCCESS(
-                    f"✔ Pedido {order.name} enviado"
+                    f"  ✔ Pedido {order.name} inyectado correctamente en Verial."
                 ))
             else:
                 self.stdout.write(self.style.ERROR(
-                    f"✖ Error enviando pedido {order.name}"
+                    f"  ✖ Error en pedido {order.name}: {message}"
                 ))

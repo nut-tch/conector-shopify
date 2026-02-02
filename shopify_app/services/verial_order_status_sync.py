@@ -12,7 +12,6 @@ def sync_orders_status():
     """
 
     try:
-        # Pedidos enviados a Verial y no finalizados
         orders_qs = Order.objects.filter(
             sent_to_verial=True
         ).exclude(
@@ -22,10 +21,8 @@ def sync_orders_status():
         if not orders_qs.exists():
             return True, "No hay pedidos para sincronizar"
 
-        # Mapeo rápido por shopify_id
         orders_by_id = {o.shopify_id: o for o in orders_qs}
 
-        # Payload base
         orders_payload = [{"Id": o.shopify_id} for o in orders_qs]
 
         url = f"http://{settings.VERIAL_SERVER}/WcfServiceLibraryVerial/EstadoPedidosWS"
@@ -33,7 +30,6 @@ def sync_orders_status():
         updated = 0
         completed = []
 
-        # Verial procesa en bloques de 25
         i = 0
         while i < len(orders_payload):
             chunk = orders_payload[i:i + 25]
@@ -65,7 +61,6 @@ def sync_orders_status():
 
                 estado = item.get("Estado")
 
-                # Mapeo de estados Verial -> sistema
                 if estado == 1:
                     order.status = "PENDING"
                 elif estado in (2, 3):

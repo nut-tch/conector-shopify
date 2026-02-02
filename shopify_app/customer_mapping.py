@@ -6,7 +6,6 @@ logger = logging.getLogger('verial')
 
 
 def build_verial_customer_payload(customer: Customer, address: dict = None) -> dict:
-    # Separar nombre y apellidos
     first_name = customer.first_name or ""
     last_name = customer.last_name or ""
     apellidos = last_name.split(" ", 1)
@@ -14,13 +13,13 @@ def build_verial_customer_payload(customer: Customer, address: dict = None) -> d
     apellido2 = apellidos[1] if len(apellidos) > 1 else ""
     
     payload = {
-        "Tipo": 1,  # 1=Persona
+        "Tipo": 1,  
         "NIF": "",
         "Nombre": first_name,
         "Apellido1": apellido1,
         "Apellido2": apellido2,
         "RazonSocial": "",
-        "ID_Pais": 1,  # España por defecto
+        "ID_Pais": 1,  
         "Provincia": address.get("province", "") if address else "",
         "Localidad": address.get("city", "") if address else "",
         "CPostal": address.get("zip", "") if address else "",
@@ -34,7 +33,6 @@ def build_verial_customer_payload(customer: Customer, address: dict = None) -> d
 
 
 def create_customer_in_verial(customer: Customer, address: dict = None) -> tuple[bool, str]:
-    # Si ya tiene mapeo, devolver el ID existente
     if hasattr(customer, 'verial_mapping'):
         return True, f"Cliente ya mapeado: {customer.verial_mapping.verial_id}"
     
@@ -63,11 +61,9 @@ def create_customer_in_verial(customer: Customer, address: dict = None) -> tuple
 
 
 def get_or_create_verial_customer(customer: Customer, address: dict = None) -> tuple[bool, int]:
-    # Si ya existe mapeo, devolver ID
     if hasattr(customer, 'verial_mapping'):
         return True, customer.verial_mapping.verial_id
     
-    # Crear en Verial
     success, result = create_customer_in_verial(customer, address)
     
     if success and hasattr(customer, 'verial_mapping'):

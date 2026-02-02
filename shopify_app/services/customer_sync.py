@@ -12,7 +12,6 @@ def build_customer_payload(customer: Customer, order: Order = None) -> dict:
     apellido1 = apellidos_raw[0] if apellidos_raw else ""
     apellido2 = apellidos_raw[1] if len(apellidos_raw) > 1 else ""
 
-    # Datos de dirección
     direccion = getattr(order, 'address1', "") or getattr(order, 'address2', "")
     localidad = getattr(order, 'city', "")
     cp = getattr(order, 'zip_code', "")
@@ -21,7 +20,6 @@ def build_customer_payload(customer: Customer, order: Order = None) -> dict:
     es_empresa = bool(getattr(customer, 'company', ""))
     tipo_cliente = 2 if es_empresa else 1
 
-    # PAYLOAD VALIDADO
     return {
         "Tipo": tipo_cliente,
         "NIF": getattr(customer, 'nif', "")[:20],
@@ -34,7 +32,6 @@ def build_customer_payload(customer: Customer, order: Order = None) -> dict:
         "ID_Tarifa": 1,
         "ID_FormaPago": 1,
         "Activo": True,
-        # Campos de dirección opcionales pero recomendados
         "Direccion": direccion[:100],
         "Localidad": localidad[:50],
         "Provincia": provincia[:50],
@@ -45,7 +42,6 @@ def get_or_create_verial_customer(customer: Customer, order: Order = None) -> tu
     """
     Lógica de sincronización: Local -> NIF -> Creación.
     """
-    # 1. ¿Ya lo tenemos mapeado localmente?
     mapping = CustomerMapping.objects.filter(customer=customer).first()
     if mapping:
         return True, mapping.verial_id
@@ -53,7 +49,6 @@ def get_or_create_verial_customer(customer: Customer, order: Order = None) -> tu
     client = VerialClient()
     nif = getattr(customer, 'nif', None)
     
-    # 2. ¿Existe ya en Verial por NIF? (Más seguro que el email)
     if nif:
         logger.info(f"Buscando cliente preventivamente por NIF: {nif}")
         success, v_customer = client.find_customer_by_nif(nif)
@@ -64,7 +59,6 @@ def get_or_create_verial_customer(customer: Customer, order: Order = None) -> tu
             CustomerMapping.objects.get_or_create(customer=customer, defaults={'verial_id': verial_id})
             return True, verial_id
 
-    # 3. Si no existe, creación.
     logger.info(f"Creando nueva ficha de cliente para: {customer.email}")
     payload = build_customer_payload(customer, order)
     success, result = client.create_customer(payload)
@@ -84,7 +78,6 @@ def ensure_customer_in_verial(order: Order) -> tuple[bool, int]:
     """Punto de entrada para el envío de pedidos."""
     customer = Customer.objects.filter(email=order.email, shop=order.shop).first()
     if not customer:
-        # Si no existe el objeto Customer, devolvemos error para que se cree antes
         return False, "Cliente no encontrado en base de datos local"
     
     return get_or_create_verial_customer(customer, order)

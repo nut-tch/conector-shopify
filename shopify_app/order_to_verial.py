@@ -35,27 +35,25 @@ def build_order_payload(order: Order, id_cliente: int) -> dict:
         if not mapping:
             raise OrderToVerialError(f"Producto sin mapear en Shopify: {line.product_title}")
 
-        # Estructura VALIDADA: Usamos ID_Articulo, Uds y TipoRegistro
         lineas_verial.append({
-            "TipoRegistro": 1,          # Fijo para artículos
+            "TipoRegistro": 1,          
             "ID_Articulo": int(mapping.verial_id),
             "Uds": float(line.quantity),
             "Precio": round(float(line.price), 2),
-            "PorcentajeIVA": 21.0,      # Verial espera este nombre de campo
+            "PorcentajeIVA": 21.0,      
             "Dto": 0.0
         })
 
     total = round(float(order.total_price), 2)
     
-    # Estructura VALIDADA para NuevoDocClienteWS
     payload = {
-        "Tipo": 5,                      # 5 = Presupuesto/Pedido (Evita Veri*Factu)
+        "Tipo": 5,                      
         "ID_Cliente": int(id_cliente),
         "Fecha": datetime.now().isoformat(),
-        "Referencia": f"S{order.name}"[:20], # Usamos order.name (ej: #1001)
-        "TotalImporte": total,           # Importante: Nombre exacto
-        "PreciosImpIncluidos": True,     # Importante: Nombre exacto
-        "Contenido": lineas_verial,      # Importante: En lugar de "Lineas"
+        "Referencia": f"S{order.name}"[:20], 
+        "TotalImporte": total,           
+        "PreciosImpIncluidos": True,     
+        "Contenido": lineas_verial,      
         "Pagos": []
     }
     
@@ -63,36 +61,34 @@ def build_order_payload(order: Order, id_cliente: int) -> dict:
     return payload
 
 def send_order_to_verial(order: Order):
-    # 1. Asegurar que el cliente existe o crearlo
     ok, id_cliente = ensure_customer_in_verial(order)
     if not ok:
         return False, f"Error Cliente: {id_cliente}"
 
     try:
-        # 2. Construir el payload con los campos que funcionan
         payload = build_order_payload(order, id_cliente)
         
-        # 3. Usar el cliente corregido
         client = VerialClient()
         success, response = client.create_order(payload)
 
         if success:
-            # Verial devuelve el ID del documento creado
             verial_id = response.get("Id")
             
-            # Guardamos el mapeo para evitar duplicados futuros
             OrderMapping.objects.update_or_create(
                 order=order,
                 defaults={
                     "verial_id": verial_id,
                     "verial_referencia": payload["Referencia"],
-                    "verial_numero": str(verial_id) # O el campo Numero si viniera
+                    "verial_numero": str(verial_id)
                 }
             )
+
+            order.sent_to_verial = True
+            order.sent_to_verial_at = timezone.now()
+            order.save(update_fields=['sent_to_verial', 'sent_to_verial_at'])
             
             return True, "Pedido inyectado correctamente"
         else:
-            # Aquí 'response' contiene la descripción del error de Verial
             return False, str(response)
 
     except OrderToVerialError as e:

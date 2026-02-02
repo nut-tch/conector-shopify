@@ -13,16 +13,13 @@ def get_verial_products_by_barcode():
     if not client.is_configured():
         return False, "Verial no configurado en settings"
     
-    # Usamos el método corregido del cliente
     success, result = client.get_articles() 
     
     if not success:
         return False, result
     
     productos_indexados = {}
-    # El API de Verial devuelve una lista en la clave 'Articulos'
     for art in result.get("Articulos", []):
-        # Normalización: El código de barras en Verial suele estar en 'ReferenciaBarras'
         barcode = str(art.get("ReferenciaBarras") or "").strip()
         if barcode:
             productos_indexados[barcode] = {
@@ -39,12 +36,10 @@ def ensure_product_mapping(variant: ProductVariant):
     MEJORA: Si no existe, usa get_stock(id_articulo) si tuviéramos el ID, 
     pero como buscamos por Barcode, usamos la caché de búsqueda.
     """
-    # 1. Si ya existe el mapeo en nuestra base de datos, lo devolvemos
     mapping = ProductMapping.objects.filter(variant=variant).first()
     if mapping:
         return mapping
 
-    # 2. Si no existe, intentamos buscarlo en Verial por código de barras
     barcode_limpio = str(variant.barcode or "").strip()
     if not barcode_limpio:
         logger.warning(f"Variante {variant.sku} no tiene barcode. Imposible mapear.")
@@ -52,7 +47,6 @@ def ensure_product_mapping(variant: ProductVariant):
 
     logger.info(f"Buscando mapeo en Verial para Barcode: {barcode_limpio}...")
     
-    # Buscamos en el catálogo de Verial
     success, verial_products = get_verial_products_by_barcode()
     
     if success and isinstance(verial_products, dict):
@@ -82,7 +76,6 @@ def auto_map_products_by_barcode():
     
     stats = {"nuevos": 0, "actualizados": 0, "sin_match": []}
     
-    # Procesamos variantes con barcode
     variants = ProductVariant.objects.exclude(barcode="").exclude(barcode__isnull=True)
     
     for variant in variants:
