@@ -90,9 +90,26 @@ def auto_map_products_by_barcode():
                     "verial_barcode": verial_art["barcode"],
                 }
             )
-            if created: stats["nuevos"] += 1
-            else: stats["actualizados"] += 1
+            if created:
+                stats["nuevos"] += 1
+            else: 
+                stats["actualizados"] += 1
         else:
             stats["sin_match"].append(barcode)
             
     return True, stats
+
+def get_mapping_stats():
+    """
+    Obtiene estadísticas de mapeo de productos.
+    """
+    total_variants = ProductVariant.objects.count()
+    mapped_variants = ProductMapping.objects.count()
+    unmapped_variants = total_variants - mapped_variants
+    
+    return {
+        "total": total_variants,
+        "mapped": mapped_variants,
+        "unmapped": unmapped_variants,
+        "percentage": round((mapped_variants / total_variants * 100) if total_variants > 0 else 0, 2)
+    }
