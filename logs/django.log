@@ -1,0 +1,18 @@
+INFO 2026-02-02 10:41:03,980 autoreload 20694 126372112920704 Watching for file changes with StatReloader
+WARNING 2026-02-02 10:44:34,298 log 20694 126372061181632 Unauthorized: /shopify/webhook/orders/create/
+WARNING 2026-02-02 10:44:34,298 log 20694 126372061181632 "POST /shopify/webhook/orders/create/ HTTP/1.1" 401 14
+WARNING 2026-02-02 10:44:35,179 log 20694 126372052788928 Unauthorized: /shopify/webhook/orders/create/
+WARNING 2026-02-02 10:44:35,179 log 20694 126372052788928 "POST /shopify/webhook/orders/create/ HTTP/1.1" 401 14
+WARNING 2026-02-02 10:45:35,341 log 20694 126372044396224 Unauthorized: /shopify/webhook/orders/create/
+WARNING 2026-02-02 10:45:35,341 log 20694 126372044396224 "POST /shopify/webhook/orders/create/ HTTP/1.1" 401 14
+WARNING 2026-02-02 10:47:35,690 log 20694 126372044396224 Unauthorized: /shopify/webhook/orders/create/
+WARNING 2026-02-02 10:47:35,691 log 20694 126372044396224 "POST /shopify/webhook/orders/create/ HTTP/1.1" 401 14
+WARNING 2026-02-02 10:52:36,246 log 20694 126372044396224 Unauthorized: /shopify/webhook/orders/create/
+WARNING 2026-02-02 10:52:36,247 log 20694 126372044396224 "POST /shopify/webhook/orders/create/ HTTP/1.1" 401 14
+WARNING 2026-02-02 10:55:45,316 log 20694 126372044396224 Unauthorized: /shopify/webhook/orders/create/
+WARNING 2026-02-02 10:55:45,317 log 20694 126372044396224 "POST /shopify/webhook/orders/create/ HTTP/1.1" 401 14
+WARNING 2026-02-02 11:02:58,367 log 20694 126372044396224 Unauthorized: /shopify/webhook/orders/create/
+WARNING 2026-02-02 11:02:58,368 log 20694 126372044396224 "POST /shopify/webhook/orders/create/ HTTP/1.1" 401 14
+INFO 2026-02-02 11:10:24,876 log 20694 126372044396224 "GET /admin/shopify_app/order/sync/ HTTP/1.1" 302 0
+INFO 2026-02-02 11:10:24,958 log 20694 126372044396224 "GET /admin/shopify_app/order/ HTTP/1.1" 200 72413
+INFO 2026-02-02 11:10:24,980 log 20694 126372044396224 "GET /admin/jsi18n/ HTTP/1.1" 200 8212

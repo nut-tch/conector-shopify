@@ -1,0 +1,91 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest==7.4.3 pytest-django==4.7.0 pytest-cov==4.1.0 responses==0.24.1
+    
+    - name: Create .env file
+      run: |
+        echo "SECRET_KEY=test-secret-key-github-actions" >> .env
+        echo "DEBUG=True" >> .env
+        echo "SHOPIFY_API_KEY=test_key" >> .env
+        echo "SHOPIFY_API_SECRET=test_secret" >> .env
+        echo "SHOPIFY_SCOPES=read_products,write_products" >> .env
+        echo "SHOPIFY_REDIRECT_URI=https://test.com/callback" >> .env
+        echo "VERIAL_SERVER=192.168.1.100:8080" >> .env
+        echo "VERIAL_SESSION=12345" >> .env
+        echo "VERIAL_ONLINE_SESSION=15" >> .env
+        echo "SEND_TO_VERIAL=false" >> .env
+    
+    - name: Run migrations
+      run: |
+        python manage.py makemigrations
+        python manage.py migrate
+    
+    - name: Run tests with coverage
+      run: |
+        pytest --cov=shopify_app --cov=erp_connector --cov-report=xml --cov-report=term-missing -v
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false
+        verbose: true
+    
+    - name: Check test coverage threshold
+      run: |
+        pytest --cov=shopify_app --cov=erp_connector --cov-fail-under=70
+
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install linting tools
+      run: |
+        pip install flake8
+    
+    - name: Run flake8
+      run: |
+        flake8 shopify_app erp_connector --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 shopify_app erp_connector --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      continue-on-error: true
