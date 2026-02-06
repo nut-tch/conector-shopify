@@ -14,7 +14,48 @@ class VerialClient:
         self.headers = {
             "Content-Type": "application/json"
         }
-
+    def test_connection(self):
+        """
+        Prueba la conexión con Verial
+        
+        Returns:
+            tuple: (success: bool, message: str)
+        """
+        try:
+            # Probar llamada simple a Verial
+            url = f'http://{self.server}/WcfServiceLibraryVerial/GetArticulosWS'
+            
+            params = {
+                'x': self.session,
+                'top': 1  # Solo 1 artículo para probar
+            }
+            
+            response = requests.get(
+                url,
+                params=params,
+                timeout=10
+            )
+            
+            if response.ok:
+                data = response.json()
+                
+                if data.get('InfoError', {}).get('Codigo') == 0:
+                    return True, f"Conexión OK - Servidor: {self.server}"
+                else:
+                    error_msg = data.get('InfoError', {}).get('Descripcion', 'Error desconocido')
+                    return False, f"Error de Verial: {error_msg}"
+            else:
+                return False, f"Error HTTP {response.status_code}: {response.text[:200]}"
+        
+        except requests.exceptions.Timeout:
+            return False, f"Timeout: {self.server} no responde"
+        
+        except requests.exceptions.ConnectionError:
+            return False, f"Error de conexión: No se puede conectar a {self.server}"
+        
+        except Exception as e:
+            return False, f"Error: {str(e)}"
+        
     def is_configured(self):
         return bool(self.server and self.session)
 

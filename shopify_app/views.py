@@ -169,7 +169,8 @@ def sync_orders(request):
                     "variant_title": item.get("variant_title", "") or "",
                     "sku": item.get("sku", "") or "",
                     "quantity": item.get("quantity", 1),
-                    "price": item.get("price", 0)
+                    "price": item.get("price", 0),
+                    "discount_amount": item.get("total_discount", 0),
                 }
             )
 
@@ -354,6 +355,7 @@ def webhook_orders_create(request):
                 "sku": item.get("sku", "") or "",
                 "quantity": item.get("quantity", 1),
                 "price": item.get("price", 0),
+                "discount_amount": item.get("total_discount", 0),
             }
         )
 

@@ -167,6 +167,11 @@ VERIAL_HEADERS = {
     "Content-Type": "application/json"
 }
 
+# Parámetros adicionales para imitar el conector viejo
+# IVA por defecto 10% (alimentación), sobreescribible por entorno
+VERIAL_DEFAULT_VAT = float(os.getenv("VERIAL_DEFAULT_VAT", "10.0"))
+VERIAL_DEFAULT_PAYMENT_METHOD_ID = int(os.getenv("VERIAL_DEFAULT_PAYMENT_METHOD_ID", "0"))
+
 # Clientes (API CLÁSICA)
 VERIAL_SEARCH_CLIENT_URL = f"{VERIAL_BASE_URL}/BuscarClienteWS" if VERIAL_BASE_URL else ""
 VERIAL_CREATE_CLIENT_URL = f"{VERIAL_BASE_URL}/NuevoClienteWS" if VERIAL_BASE_URL else ""

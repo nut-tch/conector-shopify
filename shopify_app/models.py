@@ -58,6 +58,12 @@ class OrderLine(models.Model):
     sku = models.CharField(max_length=100, blank=True, verbose_name="SKU")
     quantity = models.IntegerField(verbose_name="Cantidad")
     price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Precio")
+    discount_amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=0,
+        verbose_name="Descuento línea"
+    )
 
     class Meta:
         verbose_name = "Línea de pedido"
@@ -125,6 +131,8 @@ class Customer(models.Model):
     first_name = models.CharField(max_length=255, blank=True, verbose_name="Nombre")
     last_name = models.CharField(max_length=255, blank=True, verbose_name="Apellidos")
     phone = models.CharField(max_length=50, blank=True, verbose_name="Teléfono")
+    company = models.CharField(max_length=255, blank=True, verbose_name="Empresa")
+    nif = models.CharField(max_length=30, blank=True, verbose_name="NIF")
     created_at = models.DateTimeField(verbose_name="Fecha")
 
     class Meta:

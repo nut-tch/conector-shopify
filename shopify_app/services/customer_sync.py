@@ -6,16 +6,15 @@ logger = logging.getLogger('verial')
 
 def build_customer_payload(customer: Customer, order: Order = None) -> dict:
     """
-    Construye el payload para NuevoClienteWS con la estructura validada.
+    Construye el payload para NuevoClienteWS imitando la estructura del conector viejo.
     """
     apellidos_raw = (customer.last_name or "").strip().split(" ", 1)
     apellido1 = apellidos_raw[0] if apellidos_raw else ""
     apellido2 = apellidos_raw[1] if len(apellidos_raw) > 1 else ""
-
-    direccion = getattr(order, 'address1', "") or getattr(order, 'address2', "")
-    localidad = getattr(order, 'city', "")
-    cp = getattr(order, 'zip_code', "")
-    provincia = getattr(order, 'province', "")
+    direccion = ""
+    localidad = ""
+    cp = ""
+    provincia = ""
 
     es_empresa = bool(getattr(customer, 'company', ""))
     tipo_cliente = 2 if es_empresa else 1
@@ -27,15 +26,14 @@ def build_customer_payload(customer: Customer, order: Order = None) -> dict:
         "Apellido1": apellido1[:50].strip(),
         "Apellido2": apellido2[:50].strip(),
         "RazonSocial": (getattr(customer, 'company', "") or customer.first_name)[:100],
-        "Email": (customer.email or "")[:100],
         "ID_Pais": 1,
-        "ID_Tarifa": 1,
-        "ID_FormaPago": 1,
-        "Activo": True,
-        "Direccion": direccion[:100],
-        "Localidad": localidad[:50],
         "Provincia": provincia[:50],
-        "CPostal": cp[:10]
+        "Localidad": localidad[:50],
+        "LocalidadAux": "",
+        "CPostal": cp[:10],
+        "Direccion": direccion[:100],
+        "Telefono": (customer.phone or "")[:50],
+        "Email": (customer.email or "")[:100],
     }
 
 def get_or_create_verial_customer(customer: Customer, order: Order = None) -> tuple[bool, int]:

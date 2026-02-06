@@ -1,7 +1,10 @@
 import logging
 import json
 from datetime import datetime
+
+from django.conf import settings
 from django.utils import timezone
+
 from .models import Order, OrderMapping, OrderLine, ProductVariant
 from .services.customer_sync import ensure_customer_in_verial
 from .product_mapping import ensure_product_mapping
@@ -27,34 +30,78 @@ def get_line_mapping(line: OrderLine):
 
 def build_order_payload(order: Order, id_cliente: int) -> dict:
     """
-    Construye el payload con la estructura validada para NuevoDocClienteWS (Tipo 5).
+    Construye el payload con la estructura validada para NuevoDocClienteWS (Tipo 5),
+    imitando al máximo la forma del middleware viejo.
     """
+    iva_porcentaje = float(getattr(settings, "VERIAL_DEFAULT_VAT", 21.0))
+
     lineas_verial = []
+    base_imponible = 0.0
+
     for line in order.lines.all():
         mapping = get_line_mapping(line)
         if not mapping:
             raise OrderToVerialError(f"Producto sin mapear en Shopify: {line.product_title}")
 
-        lineas_verial.append({
-            "TipoRegistro": 1,          
-            "ID_Articulo": int(mapping.verial_id),
-            "Uds": float(line.quantity),
-            "Precio": round(float(line.price), 2),
-            "PorcentajeIVA": 21.0,      
-            "Dto": 0.0
-        })
+        qty = float(line.quantity)
+        net_unit_price_with_vat = round(float(line.price), 4)  # precio final, con descuento e IVA
+        discount_amount = float(getattr(line, "discount_amount", 0) or 0)
+
+        # Reconstruimos un precio "antes de descuento" a partir del total de la línea
+        dto = 0.0
+        original_unit_price_with_vat = net_unit_price_with_vat
+        if qty > 0 and discount_amount > 0:
+            total_net = net_unit_price_with_vat * qty
+            total_before_discount = total_net + discount_amount
+            if total_before_discount > 0:
+                original_unit_price_with_vat = round(total_before_discount / qty, 4)
+                dto = round((discount_amount / total_before_discount) * 100.0, 2)
+
+        # Base imponible en Verial = Uds * Precio_sin_IVA * (1 - dto%)
+        precio_sin_iva_original = original_unit_price_with_vat / (1 + iva_porcentaje / 100.0)
+        base_linea = qty * precio_sin_iva_original * (1 - dto / 100.0)
+        base_imponible += base_linea
+
+        lineas_verial.append(
+            {
+                "TipoRegistro": 1,
+                "ID_Articulo": int(mapping.verial_id),
+                "Uds": qty,
+                "Precio": round(original_unit_price_with_vat, 4),
+                "Dto": dto,
+                "PorcentajeIVA": float(iva_porcentaje),
+            }
+        )
 
     total = round(float(order.total_price), 2)
-    
+
+    # Pagos: en el viejo se construían a partir de objetos PaymentSale.
+    # Aquí aproximamos: si el pedido está pagado, mandamos un solo pago
+    # por el total del documento con un método genérico configurable.
+    pagos = []
+    estado_pago = (order.financial_status or "").lower()
+    if estado_pago in ("paid", "paid_in_full", "captured", "authorized"):
+        metodo_pago_id = int(getattr(settings, "VERIAL_DEFAULT_PAYMENT_METHOD_ID", 0))
+        if metodo_pago_id:
+            pagos.append(
+                {
+                    "ID_MetodoPago": metodo_pago_id,
+                    "Fecha": order.created_at.isoformat(),
+                    "Importe": float(total),
+                }
+            )
+
     payload = {
-        "Tipo": 5,                      
+        "Tipo": 5,
         "ID_Cliente": int(id_cliente),
         "Fecha": datetime.now().isoformat(),
         "Referencia": f"S{order.name}"[:20], 
-        "TotalImporte": total,           
-        "PreciosImpIncluidos": True,     
-        "Contenido": lineas_verial,      
-        "Pagos": []
+        "PreciosImpIncluidos": True,
+        "BaseImponible": round(base_imponible, 2),
+        "TotalImporte": total,
+        "Comentario": "",
+        "Contenido": lineas_verial,
+        "Pagos": pagos,
     }
     
     logger.info(f"DEBUG PAYLOAD ENVIADO: {json.dumps(payload)}")
