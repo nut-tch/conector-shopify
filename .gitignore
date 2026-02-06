@@ -5,3 +5,6 @@ __pycache__/
 venv/
 iniciar-pythonserver-venv.txt
 staticfiles/
+logs/
+backup_data.json
+*.sqlite3*

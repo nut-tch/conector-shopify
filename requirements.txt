@@ -4,6 +4,9 @@ asgiref==3.11.0
 sqlparse==0.5.5
 tzdata==2025.3
 
+# Database
+psycopg2-binary==2.9.11
+
 # HTTP & API
 requests==2.32.5
 urllib3==2.6.3

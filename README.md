@@ -18,6 +18,25 @@ Este proyecto es un middleware desarrollado en **Django** que conecta la tienda 
 - ✅ Panel de administración con botones de sincronización
 - ✅ Dashboard con estadísticas
 
+# Conector Shopify-Verial
+
+![Tests](https://github.com/nut-tch/conector-shopify/workflows/Tests/badge.svg)
+![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)
+![Django](https://img.shields.io/badge/django-5.1-green)
+![Coverage](https://img.shields.io/badge/coverage-80%25-brightgreen)
+
+Sistema de integración entre Shopify y ERP Verial con sincronización automática de productos, clientes y pedidos.
+
+## ✨ Features
+
+- 🔄 Sincronización automática de stock (GraphQL optimizado)
+- 📦 Mapeo automático de productos por barcode
+- 👥 Gestión inteligente de clientes (búsqueda por NIF)
+- 📝 Envío automático de pedidos a Verial
+- 🔐 Webhooks seguros con validación HMAC
+- 🧪 124 tests automatizados (~80% cobertura)
+- 🚀 CI/CD con GitHub Actions
+
 ---
 
 ## 🏗️ Arquitectura

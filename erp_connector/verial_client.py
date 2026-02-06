@@ -10,7 +10,7 @@ class VerialClient:
         self.server = settings.VERIAL_SERVER
         self.base_url = f"http://{self.server}/WcfServiceLibraryVerial"
         self.session = settings.VERIAL_SESSION
-        self.online_session = getattr(settings, 'VERIAL_ONLINE_SESSION', "15") # Token 15 para pedidos
+        self.online_session = settings.VERIAL_ONLINE_SESSION
         self.headers = {
             "Content-Type": "application/json"
         }
