@@ -11,6 +11,7 @@ def build_customer_payload(customer: Customer, order: Order = None) -> dict:
     apellidos_raw = (customer.last_name or "").strip().split(" ", 1)
     apellido1 = apellidos_raw[0] if apellidos_raw else ""
     apellido2 = apellidos_raw[1] if len(apellidos_raw) > 1 else ""
+    
     direccion = ""
     localidad = ""
     cp = ""
@@ -34,6 +35,9 @@ def build_customer_payload(customer: Customer, order: Order = None) -> dict:
         "Direccion": direccion[:100],
         "Telefono": (customer.phone or "")[:50],
         "Email": (customer.email or "")[:100],
+        "Activo": True,
+        "ID_Tarifa": 1,
+        "ID_FormaPago": 4,
     }
 
 def get_or_create_verial_customer(customer: Customer, order: Order = None) -> tuple[bool, int]:
